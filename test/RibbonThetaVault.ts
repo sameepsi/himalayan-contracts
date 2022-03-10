@@ -58,7 +58,6 @@ const { parseEther } = ethers.utils;
 moment.tz.setDefault("UTC");
 
 const OPTION_DELAY = 0;
-const DELAY_INCREMENT = 100;
 const gasPrice = parseUnits("30", "gwei");
 const FEE_SCALING = BigNumber.from(10).pow(6);
 const WEEKS_PER_YEAR = 52142857;
@@ -438,7 +437,9 @@ function behavesLikeRibbonOptionsVault(params: {
 
     const rollToNextOption = async () => {
       await vault.connect(ownerSigner).commitAndClose();
-      await time.increaseTo((await getNextOptionReadyAt()) + DELAY_INCREMENT);
+      await time.increaseTo(
+        (await getNextOptionReadyAt()) + time.DELAY_INCREMENT
+      );
       await strikeSelection.setDelta(params.deltaFirstOption);
       await vault.connect(keeperSigner).rollToNextOption();
     };
@@ -1817,7 +1818,9 @@ function behavesLikeRibbonOptionsVault(params: {
       it("reverts when not called with keeper", async function () {
         await vault.connect(ownerSigner).commitAndClose();
 
-        await time.increaseTo((await getNextOptionReadyAt()) + DELAY_INCREMENT);
+        await time.increaseTo(
+          (await getNextOptionReadyAt()) + time.DELAY_INCREMENT
+        );
 
         await vault.connect(keeperSigner).rollToNextOption();
 
@@ -1829,7 +1832,9 @@ function behavesLikeRibbonOptionsVault(params: {
       it("reverts when trying to burn 0 OTokens", async function () {
         await vault.connect(ownerSigner).commitAndClose();
 
-        await time.increaseTo((await getNextOptionReadyAt()) + DELAY_INCREMENT);
+        await time.increaseTo(
+          (await getNextOptionReadyAt()) + time.DELAY_INCREMENT
+        );
 
         await vault.connect(keeperSigner).rollToNextOption();
 
@@ -1883,7 +1888,9 @@ function behavesLikeRibbonOptionsVault(params: {
       it("burns all remaining oTokens", async function () {
         await vault.connect(ownerSigner).commitAndClose();
 
-        await time.increaseTo((await getNextOptionReadyAt()) + DELAY_INCREMENT);
+        await time.increaseTo(
+          (await getNextOptionReadyAt()) + time.DELAY_INCREMENT
+        );
 
         await vault.connect(keeperSigner).rollToNextOption();
 
