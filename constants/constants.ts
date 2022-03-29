@@ -10,6 +10,15 @@ export enum CHAINID {
   AURORA_MAINNET = 1313161554, // eslint-disable-line no-unused-vars
   AURORA_TESTNET = 1313161555, // eslint-disable-line no-unused-vars
 }
+export enum OPTION_PROTOCOL {
+  GAMMA = 1, // eslint-disable-line no-unused-vars
+  TD = 10, // eslint-disable-line no-unused-vars
+}
+
+export enum TransferActions {
+  INTERVAULT = 0, // eslint-disable-line no-unused-vars
+  WITHDRAW = 1, // eslint-disable-line no-unused-vars
+}
 
 // Make the block number on Thursday 12pm UTC
 // Must be 1 day from current time
@@ -19,11 +28,6 @@ export const BLOCK_NUMBER = {
   [CHAINID.AVAX_FUJI]: 2823963,
   [CHAINID.AURORA_MAINNET]: 58735796,
 };
-
-export enum OPTION_PROTOCOL {
-  GAMMA = 1, // eslint-disable-line no-unused-vars
-  TD = 10, // eslint-disable-line no-unused-vars
-}
 
 export const NULL_ADDR = "0x0000000000000000000000000000000000000000";
 export const PLACEHOLDER_ADDR = "0x0000000000000000000000000000000000000001";
@@ -209,6 +213,7 @@ export const APE_PRICER = {
   [CHAINID.ETH_MAINNET]: "0x65769fAc629C1128C1461661F29F7e598746DBCa", // Custom Uniswap Pricer
 };
 
+// NOTE: Oracle locking period and dispute period is set differently on different vaults
 export const ORACLE_DISPUTE_PERIOD = 7200;
 export const ORACLE_LOCKING_PERIOD = 300;
 
@@ -322,7 +327,7 @@ export const CHAINLINK_WETH_PRICER = {
 };
 
 export const CHAINLINK_WBTC_PRICER = {
-  [CHAINID.ETH_MAINNET]: "0x32363cAB91EEaad10BFdd0b6Cd013CAF2595E85d",
+  [CHAINID.ETH_MAINNET]: "0xa0647D32deA8bf50bb4CC6d96A91F9F2bbE43EfD",
   [CHAINID.AVAX_FUJI]: "0x0634890CF8c12F86AEfe5a3fd1F2474F12407eb5",
 };
 
@@ -406,7 +411,6 @@ export const SAVAX_USDC_POOL = {
   [CHAINID.AVAX_FUJI]: "0x0A59f35F00A482bB04d95428e1ec051cBac216C9", // NOTE: sAVAX Pricer
 };
 
-
 export const AAVE_ETH_POOL = "0x5aB53EE1d50eeF2C1DD3d5402789cd27bB52c1bB";
 export const PERP_ETH_POOL = {
   [CHAINID.ETH_MAINNET]: "0xcD83055557536EFf25FD0eAfbC56e74a1b4260B3",
@@ -418,7 +422,8 @@ export const PERP_ETH_POOL = {
  */
 
 export const APE_OPTION_ID = {
-  [CHAINID.ETH_MAINNET]: "0x53df032786f782a036aa7a561d8fe9eea0710602cab739e0ef3ce0f06560df00",
+  [CHAINID.ETH_MAINNET]:
+    "0x53df032786f782a036aa7a561d8fe9eea0710602cab739e0ef3ce0f06560df00",
 };
 
 /**

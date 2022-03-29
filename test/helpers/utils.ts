@@ -104,9 +104,19 @@ export async function getAssetPricer(pricer: string) {
   return await pricerContract.connect(ownerSigner);
 }
 
-export async function setAssetPricer(asset: string, pricer: string, protocol: OPTION_PROTOCOL) {
-  const oracleAddr = protocol === OPTION_PROTOCOL.GAMMA ? GAMMA_ORACLE[chainId] : TD_ORACLE[chainId];
-  const oracleOwnerAddr = protocol === OPTION_PROTOCOL.GAMMA ? ORACLE_OWNER[chainId] : TD_ORACLE_OWNER[chainId];
+export async function setAssetPricer(
+  asset: string,
+  pricer: string,
+  protocol: OPTION_PROTOCOL
+) {
+  const oracleAddr =
+    protocol === OPTION_PROTOCOL.GAMMA
+      ? GAMMA_ORACLE[chainId]
+      : TD_ORACLE[chainId];
+  const oracleOwnerAddr =
+    protocol === OPTION_PROTOCOL.GAMMA
+      ? ORACLE_OWNER[chainId]
+      : TD_ORACLE_OWNER[chainId];
 
   await network.provider.request({
     method: "hardhat_impersonateAccount",
@@ -125,11 +135,17 @@ export async function whitelistProduct(
   strike: string,
   collateral: string,
   isPut: boolean,
-  protocol: OPTION_PROTOCOL,
+  protocol: OPTION_PROTOCOL
 ) {
   const [adminSigner] = await ethers.getSigners();
-  const whitelistAddr = protocol === OPTION_PROTOCOL.GAMMA ? GAMMA_WHITELIST[chainId] : TD_WHITELIST[chainId];
-  const whitelistOwnerAddr = protocol === OPTION_PROTOCOL.GAMMA ? GAMMA_WHITELIST_OWNER[chainId] : TD_WHITELIST_OWNER[chainId];
+  const whitelistAddr =
+    protocol === OPTION_PROTOCOL.GAMMA
+      ? GAMMA_WHITELIST[chainId]
+      : TD_WHITELIST[chainId];
+  const whitelistOwnerAddr =
+    protocol === OPTION_PROTOCOL.GAMMA
+      ? GAMMA_WHITELIST_OWNER[chainId]
+      : TD_WHITELIST_OWNER[chainId];
 
   await network.provider.request({
     method: "hardhat_impersonateAccount",
@@ -140,7 +156,7 @@ export async function whitelistProduct(
 
   const whitelist = await ethers.getContractAt(
     "IGammaWhitelist",
-    whitelistAddr,
+    whitelistAddr
   );
 
   await adminSigner.sendTransaction({
@@ -159,15 +175,21 @@ export async function setupOracle(
   assetAddr: string,
   chainlinkPricer: string,
   signer: SignerWithAddress,
-  protocol: OPTION_PROTOCOL,
+  protocol: OPTION_PROTOCOL
 ) {
   await network.provider.request({
     method: "hardhat_impersonateAccount",
     params: [chainlinkPricer],
   });
 
-  const oracleAddr = protocol === OPTION_PROTOCOL.GAMMA ? GAMMA_ORACLE[chainId] : TD_ORACLE[chainId];
-  const oracleOwnerAddr = protocol === OPTION_PROTOCOL.GAMMA ? ORACLE_OWNER[chainId] : TD_ORACLE_OWNER[chainId];
+  const oracleAddr =
+    protocol === OPTION_PROTOCOL.GAMMA
+      ? GAMMA_ORACLE[chainId]
+      : TD_ORACLE[chainId];
+  const oracleOwnerAddr =
+    protocol === OPTION_PROTOCOL.GAMMA
+      ? ORACLE_OWNER[chainId]
+      : TD_ORACLE_OWNER[chainId];
 
   await network.provider.request({
     method: "hardhat_impersonateAccount",
@@ -179,11 +201,7 @@ export async function setupOracle(
 
   await forceSend(chainlinkPricer, "1");
 
-  const oracle = new ethers.Contract(
-    oracleAddr,
-    ORACLE_ABI,
-    pricerSigner
-  );
+  const oracle = new ethers.Contract(oracleAddr, ORACLE_ABI, pricerSigner);
 
   await signer.sendTransaction({
     to: oracleOwnerAddr,
@@ -210,14 +228,24 @@ export async function setupOracle(
 export async function setOpynOracleExpiryPrice(
   asset: string,
   oracle: Contract,
+  pricer: string,
   expiry: BigNumber,
   settlePrice: BigNumber
 ) {
-  const res = await oracle.setExpiryPrice(asset, expiry, settlePrice);
+  const lockingPeriod = await oracle.getPricerLockingPeriod(pricer);
+  const disputePeriod = await oracle.getPricerDisputePeriod(pricer);
+
+  // NOTE: There's a timing issue due to the above RPCs pushing the timestamp forward,
+  // adjust the block number a bit into the past to account for this
+  await increaseTo(expiry.toNumber() + lockingPeriod.toNumber());
+
+  const pricerSigner = await impersonate(pricer);
+  const res = await oracle
+    .connect(pricerSigner)
+    .setExpiryPrice(asset, expiry, settlePrice);
   const receipt = await res.wait();
   const timestamp = (await provider.getBlock(receipt.blockNumber)).timestamp;
-
-  await increaseTo(timestamp + ORACLE_DISPUTE_PERIOD + 1);
+  await increaseTo(timestamp + disputePeriod.toNumber());
 }
 
 export async function setOpynOracleExpiryPriceYearn(
@@ -518,14 +546,27 @@ export const getPricerAsset = async (pricer: Contract) => {
   }
 };
 
-export const getProtocolAddresses = (protocol: OPTION_PROTOCOL, chainId: number) => {
+export const getProtocolAddresses = (
+  protocol: OPTION_PROTOCOL,
+  chainId: number
+) => {
   switch (protocol) {
     case OPTION_PROTOCOL.GAMMA:
-      return [GAMMA_CONTROLLER[chainId], OTOKEN_FACTORY[chainId], MARGIN_POOL[chainId], ORACLE_OWNER[chainId]];
+      return [
+        GAMMA_CONTROLLER[chainId],
+        OTOKEN_FACTORY[chainId],
+        MARGIN_POOL[chainId],
+        ORACLE_OWNER[chainId],
+      ];
     case OPTION_PROTOCOL.TD:
-      return [TD_CONTROLLER[chainId], TD_OTOKEN_FACTORY[chainId], TD_MARGIN_POOL[chainId], TD_ORACLE_OWNER[chainId]];
+      return [
+        TD_CONTROLLER[chainId],
+        TD_OTOKEN_FACTORY[chainId],
+        TD_MARGIN_POOL[chainId],
+        TD_ORACLE_OWNER[chainId],
+      ];
     default:
-      throw new Error('Protocol not found');
+      throw new Error("Protocol not found");
   }
 };
 

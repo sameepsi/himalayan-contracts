@@ -63,7 +63,7 @@ const FEE_SCALING = BigNumber.from(10).pow(6);
 const WEEKS_PER_YEAR = 52142857;
 const PUT_EXPECTED_MINT_AMOUNT = {
   [CHAINID.ETH_MAINNET]: "3846153846",
-  [CHAINID.AVAX_MAINNET]: "138888888888",
+  [CHAINID.AVAX_MAINNET]: "158730158730",
   [CHAINID.AURORA_MAINNET]: "4761904761",
 };
 
@@ -373,7 +373,6 @@ function behavesLikeRibbonOptionsVault(params: {
   availableChains: number[];
   protocol: OPTION_PROTOCOL;
 }) {
-
   // Test configs
   let availableChains = params.availableChains;
 
@@ -382,7 +381,10 @@ function behavesLikeRibbonOptionsVault(params: {
     return;
   }
 
-  const [GAMMA_CONTROLLER, OTOKEN_FACTORY, MARGIN_POOL] = getProtocolAddresses(params.protocol, chainId);
+  const [GAMMA_CONTROLLER, OTOKEN_FACTORY, MARGIN_POOL] = getProtocolAddresses(
+    params.protocol,
+    chainId
+  );
 
   // Addresses
   let owner: string, keeper: string, user: string, feeRecipient: string;
@@ -445,11 +447,17 @@ function behavesLikeRibbonOptionsVault(params: {
     };
 
     const rollToSecondOption = async (settlementPrice: BigNumber) => {
-      const oracle = await setupOracle(params.asset, params.chainlinkPricer, ownerSigner, params.protocol);
+      const oracle = await setupOracle(
+        params.asset,
+        params.chainlinkPricer,
+        ownerSigner,
+        params.protocol
+      );
 
       await setOpynOracleExpiryPrice(
         params.asset,
         oracle,
+        params.chainlinkPricer,
         await getCurrentOptionExpiry(),
         settlementPrice
       );
@@ -594,17 +602,14 @@ function behavesLikeRibbonOptionsVault(params: {
         )
       ).connect(userSigner);
 
-      oTokenFactory = await getContractAt(
-        "IOtokenFactory",
-        OTOKEN_FACTORY
-      );
+      oTokenFactory = await getContractAt("IOtokenFactory", OTOKEN_FACTORY);
 
       await whitelistProduct(
         params.asset,
         params.strikeAsset,
         params.collateralAsset,
         params.isPut,
-        params.protocol,
+        params.protocol
       );
 
       const latestTimestamp = (await provider.getBlock("latest")).timestamp;
@@ -638,7 +643,7 @@ function behavesLikeRibbonOptionsVault(params: {
         params.collateralAsset,
         firstOptionStrike,
         firstOptionExpiry,
-        params.isPut,
+        params.isPut
       );
 
       firstOption = {
@@ -668,7 +673,7 @@ function behavesLikeRibbonOptionsVault(params: {
         params.collateralAsset,
         secondOptionStrike,
         secondOptionExpiry,
-        params.isPut,
+        params.isPut
       );
 
       secondOption = {
@@ -1715,7 +1720,7 @@ function behavesLikeRibbonOptionsVault(params: {
 
         const controller = await ethers.getContractAt(
           "IController",
-          GAMMA_CONTROLLER,
+          GAMMA_CONTROLLER
         );
 
         assert.equal(await controller.getAccountVaultCounter(vault.address), 2);
@@ -1977,7 +1982,12 @@ function behavesLikeRibbonOptionsVault(params: {
       time.revertToSnapshotAfterEach(async function () {
         await depositIntoVault(params.collateralAsset, vault, depositAmount);
 
-        oracle = await setupOracle(params.asset, params.chainlinkPricer, ownerSigner, params.protocol);
+        oracle = await setupOracle(
+          params.asset,
+          params.chainlinkPricer,
+          ownerSigner,
+          params.protocol
+        );
       });
 
       it("reverts when not called with keeper", async function () {
@@ -2172,6 +2182,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await setOpynOracleExpiryPrice(
           params.asset,
           oracle,
+          params.chainlinkPricer,
           await getCurrentOptionExpiry(),
           settlementPriceITM
         );
@@ -2298,6 +2309,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await setOpynOracleExpiryPrice(
           params.asset,
           oracle,
+          params.chainlinkPricer,
           await getCurrentOptionExpiry(),
           settlementPriceOTM
         );
@@ -2392,6 +2404,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await setOpynOracleExpiryPrice(
           params.asset,
           oracle,
+          params.chainlinkPricer,
           await getCurrentOptionExpiry(),
           firstOptionStrike
         );
@@ -2433,6 +2446,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await setOpynOracleExpiryPrice(
           params.asset,
           oracle,
+          params.chainlinkPricer,
           await getCurrentOptionExpiry(),
           settlementPriceOTM
         );
@@ -2550,7 +2564,12 @@ function behavesLikeRibbonOptionsVault(params: {
       let oracle: Contract;
 
       time.revertToSnapshotAfterEach(async function () {
-        oracle = await setupOracle(params.asset, params.chainlinkPricer, ownerSigner, params.protocol);
+        oracle = await setupOracle(
+          params.asset,
+          params.chainlinkPricer,
+          ownerSigner,
+          params.protocol
+        );
       });
 
       it("is able to redeem deposit at new price per share", async function () {
@@ -2682,6 +2701,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await setOpynOracleExpiryPrice(
           params.asset,
           oracle,
+          params.chainlinkPricer,
           await getCurrentOptionExpiry(),
           settlementPriceITM
         );
@@ -2905,7 +2925,12 @@ function behavesLikeRibbonOptionsVault(params: {
       let oracle: Contract;
 
       time.revertToSnapshotAfterEach(async () => {
-        oracle = await setupOracle(params.asset, params.chainlinkPricer, ownerSigner, params.protocol);
+        oracle = await setupOracle(
+          params.asset,
+          params.chainlinkPricer,
+          ownerSigner,
+          params.protocol
+        );
       });
 
       it("reverts when user initiates withdraws without any deposit", async function () {
@@ -2962,6 +2987,7 @@ function behavesLikeRibbonOptionsVault(params: {
         await setOpynOracleExpiryPrice(
           params.asset,
           oracle,
+          params.chainlinkPricer,
           await getCurrentOptionExpiry(),
           firstOptionStrike
         );
