@@ -388,7 +388,7 @@ describe("VaultQueue", () => {
 
     assert.equal(
       (await ethers.provider.getBalance(await signer1.getAddress())).toString(),
-      "6335844911081691444"
+      "6335844911161737034"
     );
 
     await vaultQueue.connect(keeperSigner).transfer(ethCallVault.address);
@@ -400,7 +400,7 @@ describe("VaultQueue", () => {
 
     assert.equal(
       (await ethers.provider.getBalance(await signer1.getAddress())).toString(),
-      "16408437636588151442"
+      "16408437636668197032"
     );
   });
 
@@ -571,7 +571,7 @@ describe("VaultQueue", () => {
       await ethers.provider.getBalance(keeperSigner.address)
     ).toString();
 
-    assert.equal(keeperBalance, "9969969715542058388787");
+    assert.equal(keeperBalance, "9969969715711662156362");
 
     await vaultQueue
       .connect(keeperSigner)
