@@ -28,7 +28,6 @@ contract VaultQueue is
     enum TransferAction {INTERVAULT, WITHDRAW}
     struct Transfer {
         address creditor;
-        address srcVault;
         address dstVault;
         address depositContract;
         uint32 timestamp;
@@ -43,6 +42,7 @@ contract VaultQueue is
 
     address public wethVault;
     address public stethVault;
+    uint256 public queueSize;
 
     event Disburse(address vault, Transfer txn, uint256 portion);
 
@@ -57,6 +57,7 @@ contract VaultQueue is
 
         wethVault = _wethVault; // Can be the native vault (weth or wavax)
         stethVault = _stethVault; // Must ONLY be steth vault.  (savax vault returns erc20, set as keeper)
+        queueSize = 32;
     }
 
     function getInterVaultBalance(address vault)
@@ -88,7 +89,8 @@ contract VaultQueue is
             address steth = IRibbonVault(vault).STETH();
             IERC20(steth).transfer(creditor, portion);
         } else if (vault == wethVault) {
-            payable(creditor).transfer(portion);
+            (bool sent, ) = creditor.call{value: portion}("");
+            require(sent, "Failed to withdraw to creditor");
         } else {
             Vault.VaultParams memory vaultParams =
                 IRibbonVault(vault).vaultParams();
@@ -131,7 +133,8 @@ contract VaultQueue is
     }
 
     function transfer(address vault) external onlyOwner nonReentrant {
-        uint256 withdrawals = IRibbonVault(vault).withdrawals(address(this));
+        uint256 withdrawals =
+            IRibbonVault(vault).withdrawals(address(this)).shares;
         if (withdrawals > 0) {
             if (vault == stethVault) {
                 IRibbonVault(vault).completeWithdraw(0);
@@ -154,10 +157,10 @@ contract VaultQueue is
             !hasWithdrawal(srcVault, msg.sender),
             "Withdraw already submitted"
         );
-        require(qTransfer[srcVault].length < 256, "Transfer queue full");
+        require(qTransfer[srcVault].length < queueSize, "Transfer queue full");
 
         if (transferAction == TransferAction.INTERVAULT) {
-            require(depositContract != address(0), "Intervault !address");
+            require(depositContract != address(0), "No deposit contract");
         } else if (transferAction == TransferAction.WITHDRAW) {
             // depositContract is not used on withdraw, so let's set it to msg.sender
             require(
@@ -173,7 +176,6 @@ contract VaultQueue is
         qTransfer[srcVault].push(
             Transfer(
                 msg.sender,
-                srcVault,
                 dstVault,
                 depositContract,
                 uint32(block.timestamp),
@@ -197,27 +199,23 @@ contract VaultQueue is
         return false;
     }
 
+    function setQueueSize(uint256 _queueSize) external onlyOwner {
+        queueSize = _queueSize;
+    }
+
     function pop(Transfer[] storage array) private returns (Transfer memory) {
         Transfer memory item = array[array.length - 1];
         array.pop();
         return item;
     }
 
-    function reset(address vault) external onlyOwner {
-        delete qTransfer[vault];
-        totalAmount[vault] = 0;
+    modifier onlyVault {
+        require(
+            msg.sender == wethVault || msg.sender == stethVault,
+            "Invalid sender"
+        );
+        _;
     }
 
-    // ETH and ERC20s are not kept in this contract unless explicitly sent.
-    // This contract intermediately holds tokens only during transfer() and only within the transaction.
-    function rescueETH(uint256 amount) external onlyOwner {
-        payable(msg.sender).transfer(amount);
-    }
-
-    function rescue(address asset, uint256 amount) external onlyOwner {
-        IERC20(asset).approve(address(this), amount);
-        IERC20(asset).transfer(msg.sender, amount);
-    }
-
-    receive() external payable {}
+    receive() external payable onlyVault {}
 }

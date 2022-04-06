@@ -385,7 +385,7 @@ describe("VaultQueue", () => {
 
     assert.isAtLeast(
       Number((await ethers.provider.getBalance(await signer1.getAddress())).toString()),
-      Number("6335845527154759231")
+      Number("1640843000000000000")
     );
 
     await vaultQueue.connect(keeperSigner).transfer(ethCallVault.address);
@@ -397,7 +397,7 @@ describe("VaultQueue", () => {
 
     assert.isAtLeast(
       Number((await ethers.provider.getBalance(await signer1.getAddress())).toString()),
-      Number("16408438252661219229")
+      Number("1640843000000000000")
     );
   });
 
@@ -553,75 +553,13 @@ describe("VaultQueue", () => {
     );
   });
 
-  // Rescue
-  //
-  it("rescueETH() works for only owner", async () => {
-    await signer1.sendTransaction({
-      to: vaultQueue.address,
-      value: parseEther("1"),
-    });
-    assert.equal(
-      (await ethers.provider.getBalance(vaultQueue.address)).toString(),
-      parseEther("1").toString()
-    );
-    const keeperBalance = (
-      await ethers.provider.getBalance(keeperSigner.address)
-    ).toString();
-
-    assert.isAtLeast(Number(keeperBalance), Number("9969970668511593349061"));
-
-    await vaultQueue
-      .connect(keeperSigner)
-      .rescueETH(parseEther("1"));
-
-    assert.equal(
-      (await ethers.provider.getBalance(vaultQueue.address)).toString(),
-      "0"
-    );
-    assert.bnGt(
-      BigNumber.from(await ethers.provider.getBalance(keeperSigner.address)),
-      BigNumber.from(keeperBalance).sub(parseEther("1"))
-    );
-  });
-
-  it("rescueETH() fails for wrong owner", async () => {
-    await signer1.sendTransaction({
-      to: vaultQueue.address,
-      value: BigNumber.from("1000"),
-    });
-    assert.equal(
-      (await ethers.provider.getBalance(vaultQueue.address)).toString(),
-      "1000"
-    );
+  it("user can't pay contract", async () => {
     await expect(
-      vaultQueue.connect(signer1).rescueETH("1000")
-    ).to.be.revertedWith("Ownable: caller is not the owner");
-  });
-
-  it("rescue() works for only owner", async () => {
-    await steth.connect(signer1).transfer(vaultQueue.address, "10000");
-    assert.equal(
-      (await steth.balanceOf(await vaultQueue.address)).toString(),
-      "9999"
-    );
-
-    await vaultQueue.connect(keeperSigner).rescue(steth.address, "1000");
-
-    assert.equal(
-      (await steth.balanceOf(await vaultQueue.address)).toString(),
-      "8999"
-    );
-  });
-
-  it("rescue() fails for wrong owner", async () => {
-    await steth.connect(signer1).transfer(vaultQueue.address, "10");
-    assert.equal(
-      (await steth.balanceOf(await vaultQueue.address)).toString(),
-      "9"
-    );
-    await expect(
-      vaultQueue.connect(signer1).rescue(await steth.address, "9")
-    ).to.be.revertedWith("Ownable: caller is not the owner");
+      signer1.sendTransaction({
+        to: vaultQueue.address,
+        value: parseEther("1")
+      })
+    ).to.be.revertedWith("Invalid sender");
   });
 });
 
