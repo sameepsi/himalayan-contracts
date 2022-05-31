@@ -26,7 +26,7 @@ const main = async ({
 }: HardhatRuntimeEnvironment) => {
   const chainId = network.config.chainId;
 
-  if (chainId === CHAINID.AVAX_MAINNET || chainId === CHAINID.AVAX_FUJI) {
+  if (chainId === CHAINID.AVAX_MAINNET || chainId === CHAINID.AVAX_FUJI || chainId === CHAINID.POLYGON_MAINNET) {
     console.log(
       `06 - Skipping deployment AAVE Call Theta Vault on ${network.name}`
     );

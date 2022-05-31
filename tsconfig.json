@@ -5,5 +5,5 @@
     "moduleResolution": "node",
     "resolveJsonModule": true
   },
-  "include": ["./hardhat.config.ts", "./scripts", "./test"]
+  "include": ["./hardhat.config.ts", "./scripts", "./test", "deploy_polygon", "deploy"]
 }

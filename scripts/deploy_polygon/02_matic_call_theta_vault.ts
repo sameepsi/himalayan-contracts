@@ -18,7 +18,9 @@ import {
   PERFORMANCE_FEE,
   PREMIUM_DISCOUNT,
   STRIKE_DELTA,
-} from "../utils/constants";
+  STRIKE_STEP_DIVIDING_FACTOR,
+  STRIKE_STEP_DIVIDING_FACTOR_MATIC,
+} from "../../scripts/utils/constants";
 
 const TOKEN_NAME = {
   [CHAINID.POLYGON_MAINNET]: "Ribbon MATIC Theta Vault",
@@ -47,6 +49,15 @@ const STRIKE_STEP = {
   [CHAINID.AURORA_MAINNET]: ETH_STRIKE_STEP,
 };
 
+const STRIKE_STEP_FACTOR = {
+  [CHAINID.POLYGON_MAINNET]: STRIKE_STEP_DIVIDING_FACTOR_MATIC,
+  [CHAINID.ETH_MAINNET]: STRIKE_STEP_DIVIDING_FACTOR,
+  [CHAINID.ETH_KOVAN]: STRIKE_STEP_DIVIDING_FACTOR,
+  [CHAINID.AVAX_MAINNET]: STRIKE_STEP_DIVIDING_FACTOR,
+  [CHAINID.AVAX_FUJI]: STRIKE_STEP_DIVIDING_FACTOR,
+  [CHAINID.AURORA_MAINNET]: STRIKE_STEP_DIVIDING_FACTOR,
+};
+
 const main = async ({
   network,
   deployments,
@@ -58,7 +69,7 @@ const main = async ({
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();
-  console.log(`02 - Deploying ETH Call Theta Vault on ${network.name}`);
+  console.log(`02 - Deploying MATIC Call Theta Vault on ${network.name}`);
 
   const chainId = network.config.chainId;
 
@@ -66,7 +77,7 @@ const main = async ({
   const underlyingOracle = ETH_PRICE_ORACLE[chainId];
   const stablesOracle = USDC_PRICE_ORACLE[chainId];
 
-  const pricer = await deploy("OptionsPremiumPricerETH", {
+  const pricer = await deploy("OptionsPremiumPricerMatic", {
     from: deployer,
     contract: {
       abi: OptionsPremiumPricerInStables_ABI,
@@ -80,18 +91,18 @@ const main = async ({
     ],
   });
 
-  console.log(`RibbonThetaVaultETHCall pricer @ ${pricer.address}`);
+  console.log(`RibbonThetaVaultMATICCall pricer @ ${pricer.address}`);
 
   // Can't verify pricer because it's compiled with 0.7.3
 
-  const strikeSelection = await deploy("StrikeSelectionETH", {
+  const strikeSelection = await deploy("StrikeSelectionMATIC", {
     contract: "DeltaStrikeSelection",
     from: deployer,
-    args: [pricer.address, STRIKE_DELTA, STRIKE_STEP[chainId]],
+    args: [pricer.address, STRIKE_DELTA, STRIKE_STEP[chainId], STRIKE_STEP_FACTOR[chainId]],
   });
 
   console.log(
-    `RibbonThetaVaultETHCall strikeSelection @ ${strikeSelection.address}`
+    `RibbonThetaVaultMATICCall strikeSelection @ ${strikeSelection.address}`
   );
 
   try {
@@ -101,6 +112,7 @@ const main = async ({
         pricer.address,
         STRIKE_DELTA,
         STRIKE_STEP[chainId],
+        STRIKE_STEP_FACTOR[chainId]
       ],
     });
   } catch (error) {
@@ -146,13 +158,13 @@ const main = async ({
     initArgs
   );
 
-  const proxy = await deploy("RibbonThetaVaultETHCall", {
+  const proxy = await deploy("RibbonThetaVaultMATICCall", {
     contract: "AdminUpgradeabilityProxy",
     from: deployer,
     args: [logicDeployment.address, admin, initData],
   });
 
-  console.log(`RibbonThetaVaultETHCall Proxy @ ${proxy.address}`);
+  console.log(`RibbonThetaVaultMATICCall Proxy @ ${proxy.address}`);
 
   try {
     await run("verify:verify", {
@@ -163,7 +175,7 @@ const main = async ({
     console.log(error);
   }
 };
-main.tags = ["RibbonThetaVaultETHCall"];
+main.tags = ["RibbonThetaVaultMATICCall"];
 main.dependencies = ["ManualVolOracle", "RibbonThetaVaultLogic"];
 
 export default main;

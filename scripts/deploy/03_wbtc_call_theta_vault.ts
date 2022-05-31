@@ -6,6 +6,7 @@ import {
   USDC_PRICE_ORACLE,
   WBTC_USDC_POOL,
   OptionsPremiumPricerInStables_BYTECODE,
+  CHAINID,
 } from "../../constants/constants";
 import OptionsPremiumPricerInStables_ABI from "../../constants/abis/OptionsPremiumPricerInStables.json";
 import {
@@ -14,6 +15,7 @@ import {
   PERFORMANCE_FEE,
   PREMIUM_DISCOUNT,
   STRIKE_DELTA,
+  STRIKE_STEP_DIVIDING_FACTOR,
   WBTC_STRIKE_STEP,
 } from "../utils/constants";
 
@@ -23,6 +25,14 @@ const main = async ({
   ethers,
   getNamedAccounts,
 }: HardhatRuntimeEnvironment) => {
+  const chainId = network.config.chainId;
+
+  if (chainId === CHAINID.AVAX_MAINNET || chainId === CHAINID.AVAX_FUJI || chainId === CHAINID.POLYGON_MAINNET) {
+    console.log(
+      `06 - Skipping deployment AAVE Call Theta Vault on ${network.name}`
+    );
+    return;
+  }
   const { BigNumber } = ethers;
   const { parseUnits } = ethers.utils;
   const { deploy } = deployments;
@@ -31,7 +41,6 @@ const main = async ({
   console.log(`03 - Deploying WBTC Call Theta Vault on ${network.name}`);
 
   const manualVolOracle = await deployments.get("ManualVolOracle");
-  const chainId = network.config.chainId;
   const underlyingOracle = BTC_PRICE_ORACLE[chainId];
   const stablesOracle = USDC_PRICE_ORACLE[chainId];
 
@@ -56,7 +65,7 @@ const main = async ({
   const strikeSelection = await deploy("StrikeSelectionWBTC", {
     contract: "DeltaStrikeSelection",
     from: deployer,
-    args: [pricer.address, STRIKE_DELTA, WBTC_STRIKE_STEP],
+    args: [pricer.address, STRIKE_DELTA, WBTC_STRIKE_STEP, STRIKE_STEP_DIVIDING_FACTOR],
   });
 
   console.log(
@@ -66,7 +75,7 @@ const main = async ({
   try {
     await run("verify:verify", {
       address: strikeSelection.address,
-      constructorArguments: [pricer.address, STRIKE_DELTA, WBTC_STRIKE_STEP],
+      constructorArguments: [pricer.address, STRIKE_DELTA, WBTC_STRIKE_STEP, STRIKE_STEP_DIVIDING_FACTOR],
     });
   } catch (error) {
     console.log(error);

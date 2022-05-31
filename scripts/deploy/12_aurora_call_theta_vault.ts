@@ -6,8 +6,8 @@ import {
   AURORA_PRICE_ORACLE,
   AURORA_USDC_POOL,
   OptionsPremiumPricerInStables_BYTECODE,
-} from "../../constants/constants";
-import OptionsPremiumPricerInStables_ABI from "../../constants/abis/OptionsPremiumPricerInStables.json";
+} from "../constants/constants";
+import OptionsPremiumPricerInStables_ABI from "../constants/abis/OptionsPremiumPricerInStables.json";
 import {
   AUCTION_DURATION,
   MANAGEMENT_FEE,
@@ -15,7 +15,7 @@ import {
   PREMIUM_DISCOUNT,
   STRIKE_DELTA,
   AURORA_STRIKE_STEP,
-} from "../utils/constants";
+} from "../scripts/utils/constants";
 
 const main = async ({
   network,

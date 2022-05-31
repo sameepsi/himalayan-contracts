@@ -44,12 +44,14 @@ contract DeltaStrikeSelection is Ownable {
     constructor(
         address _optionsPremiumPricer,
         uint256 _delta,
-        uint256 _step
+        uint256 _step,
+        uint256 _stepDividingFactor
     ) {
         require(_optionsPremiumPricer != address(0), "!_optionsPremiumPricer");
         require(_delta > 0, "!_delta");
         require(_delta <= DELTA_MULTIPLIER, "newDelta cannot be more than 1");
         require(_step > 0, "!_step");
+        require(_stepDividingFactor > 0, "!_stepDividingFactor");
         optionsPremiumPricer = IOptionsPremiumPricer(_optionsPremiumPricer);
         volatilityOracle = IManualVolatilityOracle(
             IOptionsPremiumPricer(_optionsPremiumPricer).volatilityOracle()
@@ -64,7 +66,7 @@ contract DeltaStrikeSelection is Ownable {
                     .decimals();
 
         // ex: step = 1000
-        step = _step.mul(_assetOracleMultiplier);
+        step = _step.mul(_assetOracleMultiplier).div(_stepDividingFactor);
 
         assetOracleMultiplier = _assetOracleMultiplier;
     }

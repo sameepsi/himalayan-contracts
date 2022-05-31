@@ -2,6 +2,7 @@
  * Vault params
  */
 export const ETH_STRIKE_STEP = 100; // ETH strike prices move in increments of 100
+export const MATIC_STRIKE_STEP = 1; // MATIC strike prices move in increments of 1
 export const WBTC_STRIKE_STEP = 1000; // WBTC strike prices move in increments of 1000
 export const AVAX_STRIKE_STEP = 10;
 export const SAVAX_STRIKE_STEP = 10;
@@ -9,6 +10,9 @@ export const AAVE_STRIKE_STEP = 10;
 export const NEAR_STRIKE_STEP = 5;
 export const AURORA_STRIKE_STEP = 5;
 export const APE_STRIKE_STEP = 1;
+
+export const STRIKE_STEP_DIVIDING_FACTOR = 1;
+export const STRIKE_STEP_DIVIDING_FACTOR_MATIC = 10;
 
 export const STRIKE_DELTA = 1000; // 0.1d
 export const PREMIUM_DISCOUNT = 200; // 0.20, 80% discount

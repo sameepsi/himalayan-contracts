@@ -23,5 +23,5 @@ export async function gas(network: string) {
   if (network === "mainnet") {
     return (await getGasPrice()).add(parseUnits("20", "gwei"));
   }
-  return parseUnits("1", "gwei");
+  return parseUnits("40", "gwei");
 }

@@ -1,51 +1,23 @@
 import { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import {
-  CHAINID,
-  WETH_ADDRESS,
-  ETH_USDC_POOL,
+  ETHER_ADDRESS,
+  WETH_PRICE_ORACLE,
   USDC_PRICE_ORACLE,
-  ETH_PRICE_ORACLE,
+  WETH_USDC_POOL,
   OptionsPremiumPricerInStables_BYTECODE,
+  CHAINID,
 } from "../../constants/constants";
 import OptionsPremiumPricerInStables_ABI from "../../constants/abis/OptionsPremiumPricerInStables.json";
 import {
   AUCTION_DURATION,
-  AVAX_STRIKE_STEP,
-  ETH_STRIKE_STEP,
   MANAGEMENT_FEE,
-  MATIC_STRIKE_STEP,
   PERFORMANCE_FEE,
   PREMIUM_DISCOUNT,
   STRIKE_DELTA,
+  STRIKE_STEP_DIVIDING_FACTOR,
+  ETH_STRIKE_STEP
 } from "../utils/constants";
-
-const TOKEN_NAME = {
-  [CHAINID.POLYGON_MAINNET]: "Ribbon MATIC Theta Vault",
-  [CHAINID.ETH_MAINNET]: "Ribbon ETH Theta Vault",
-  [CHAINID.ETH_KOVAN]: "Ribbon ETH Theta Vault",
-  [CHAINID.AVAX_MAINNET]: "Ribbon AVAX Theta Vault",
-  [CHAINID.AVAX_FUJI]: "Ribbon AVAX Theta Vault",
-  [CHAINID.AURORA_MAINNET]: "Ribbon ETH Theta Vault",
-};
-
-const TOKEN_SYMBOL = {
-  [CHAINID.POLYGON_MAINNET]: "rMATIC-THETA",
-  [CHAINID.ETH_MAINNET]: "rETH-THETA",
-  [CHAINID.ETH_KOVAN]: "rETH-THETA",
-  [CHAINID.AVAX_MAINNET]: "rAVAX-THETA",
-  [CHAINID.AVAX_FUJI]: "rAVAX-THETA",
-  [CHAINID.AURORA_MAINNET]: "rETH-THETA",
-};
-
-const STRIKE_STEP = {
-  [CHAINID.POLYGON_MAINNET]: MATIC_STRIKE_STEP,
-  [CHAINID.ETH_MAINNET]: ETH_STRIKE_STEP,
-  [CHAINID.ETH_KOVAN]: ETH_STRIKE_STEP,
-  [CHAINID.AVAX_MAINNET]: AVAX_STRIKE_STEP,
-  [CHAINID.AVAX_FUJI]: AVAX_STRIKE_STEP,
-  [CHAINID.AURORA_MAINNET]: ETH_STRIKE_STEP,
-};
 
 const main = async ({
   network,
@@ -53,17 +25,23 @@ const main = async ({
   ethers,
   getNamedAccounts,
 }: HardhatRuntimeEnvironment) => {
+  const chainId = network.config.chainId;
+
+  if (chainId !== CHAINID.POLYGON_MAINNET) {
+    console.log(
+      `06 - Skipping deployment AAVE Call Theta Vault on ${network.name}`
+    );
+    return;
+  }
   const { BigNumber } = ethers;
-  const { parseEther } = ethers.utils;
+  const { parseUnits } = ethers.utils;
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();
-  console.log(`02 - Deploying ETH Call Theta Vault on ${network.name}`);
-
-  const chainId = network.config.chainId;
+  console.log(`03 - Deploying ETH Call Theta Vault on ${network.name}`);
 
   const manualVolOracle = await deployments.get("ManualVolOracle");
-  const underlyingOracle = ETH_PRICE_ORACLE[chainId];
+  const underlyingOracle = WETH_PRICE_ORACLE[chainId];
   const stablesOracle = USDC_PRICE_ORACLE[chainId];
 
   const pricer = await deploy("OptionsPremiumPricerETH", {
@@ -73,7 +51,7 @@ const main = async ({
       bytecode: OptionsPremiumPricerInStables_BYTECODE,
     },
     args: [
-      ETH_USDC_POOL[chainId],
+      WETH_USDC_POOL[chainId],
       manualVolOracle.address,
       underlyingOracle,
       stablesOracle,
@@ -87,7 +65,7 @@ const main = async ({
   const strikeSelection = await deploy("StrikeSelectionETH", {
     contract: "DeltaStrikeSelection",
     from: deployer,
-    args: [pricer.address, STRIKE_DELTA, STRIKE_STEP[chainId]],
+    args: [pricer.address, STRIKE_DELTA, ETH_STRIKE_STEP, STRIKE_STEP_DIVIDING_FACTOR],
   });
 
   console.log(
@@ -97,18 +75,15 @@ const main = async ({
   try {
     await run("verify:verify", {
       address: strikeSelection.address,
-      constructorArguments: [
-        pricer.address,
-        STRIKE_DELTA,
-        STRIKE_STEP[chainId],
-      ],
+      constructorArguments: [pricer.address, STRIKE_DELTA, ETH_STRIKE_STEP, STRIKE_STEP_DIVIDING_FACTOR],
     });
   } catch (error) {
     console.log(error);
   }
 
-  const lifecycle = await deployments.get("VaultLifecycle");
   const logicDeployment = await deployments.get("RibbonThetaVaultLogic");
+  const lifecycle = await deployments.get("VaultLifecycle");
+
   const RibbonThetaVault = await ethers.getContractFactory("RibbonThetaVault", {
     libraries: {
       VaultLifecycle: lifecycle.address,
@@ -122,8 +97,8 @@ const main = async ({
       _feeRecipient: feeRecipient,
       _managementFee: MANAGEMENT_FEE,
       _performanceFee: PERFORMANCE_FEE,
-      _tokenName: TOKEN_NAME[chainId],
-      _tokenSymbol: TOKEN_SYMBOL[chainId],
+      _tokenName: "Ribbon BTC Theta Vault",
+      _tokenSymbol: "rBTC-THETA",
       _optionsPremiumPricer: pricer.address,
       _strikeSelection: strikeSelection.address,
       _premiumDiscount: PREMIUM_DISCOUNT,
@@ -133,14 +108,13 @@ const main = async ({
     },
     {
       isPut: false,
-      decimals: 18,
-      asset: WETH_ADDRESS[chainId],
-      underlying: WETH_ADDRESS[chainId],
-      minimumSupply: BigNumber.from(10).pow(10),
-      cap: parseEther("1000"),
+      decimals: 8,
+      asset: ETHER_ADDRESS[chainId],
+      underlying: ETHER_ADDRESS[chainId],
+      minimumSupply: BigNumber.from(10).pow(3),
+      cap: parseUnits("100", 8),
     },
   ];
-
   const initData = RibbonThetaVault.interface.encodeFunctionData(
     "initialize",
     initArgs
@@ -152,7 +126,7 @@ const main = async ({
     args: [logicDeployment.address, admin, initData],
   });
 
-  console.log(`RibbonThetaVaultETHCall Proxy @ ${proxy.address}`);
+  console.log(`RibbonThetaVaultETHCall @ ${proxy.address}`);
 
   try {
     await run("verify:verify", {
