@@ -108,13 +108,13 @@
     },
     "polygon": {
         "ManualVolOracle": "0x923566D125f69dc3eD2fa35dC74a5A0B8352936d",
-        "OptionsPremiumPricerETHCall": "0xa75f24abad3da15E7DC662459f54936dB9E5f8C1",
+        "OptionsPremiumPricerETHCall": "0xaa1a26753c6B7C409Cac98a3664eA3E3478Ee50A",
         "OptionsPremiumPricerMATICCall": "0xcd98f5801dbf35d77c2adfdb8bfd10d5f4a04213",
         "OpynOracle": "0xEF3B91345dd7be2C5C1F95C40545e9bF274ee698",
-        "RibbonThetaVaultETHCall": "0x1E4B3184CADAe8a74ce25d12d73D5edAF5593839",
+        "RibbonThetaVaultETHCall": "0x3e87e0246f184Bc5045b95981667843FE70C4185",
         "RibbonThetaVaultLogic": "0x5038598C3Ae25D49eA5cCBF83511Cb71517B1E90",
         "RibbonThetaVaultMATICCall": "0xdeE5A0F1729389462526e3A66068F753135D3d0D",
-        "StrikeSelectionETHCall": "0x005f25a431F7F798AA07F1217f63cc3b907Cc91f",
+        "StrikeSelectionETHCall": "0xa267Ce997792406A992895023b184d2b737cef14",
         "StrikeSelectionMATICCall": "0xfc220E5Fcc59C8ebB2Af9d4aAB8f2F5e9b6639b1",
         "VaultLifecycle": "0xF5EcB9443fc6B2Ca89351A5470AF32Eb9Fb1c827"
     }
