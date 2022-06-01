@@ -9,15 +9,16 @@ import {
   CHAINID,
 } from "../../constants/constants";
 import OptionsPremiumPricerInStables_ABI from "../../constants/abis/OptionsPremiumPricerInStables.json";
+import ManualVolOracle_ABI from "../../constants/abis/ManualVolOracle.json";
 import {
   AUCTION_DURATION,
   MANAGEMENT_FEE,
   PERFORMANCE_FEE,
   PREMIUM_DISCOUNT,
   STRIKE_DELTA,
-  STRIKE_STEP_DIVIDING_FACTOR,
-  ETH_STRIKE_STEP
+  STRIKE_STEP,
 } from "../utils/constants";
+import { getDeltaStep } from "../../test/helpers/utils";
 
 const main = async ({
   network,
@@ -44,6 +45,14 @@ const main = async ({
   const underlyingOracle = WETH_PRICE_ORACLE[chainId];
   const stablesOracle = USDC_PRICE_ORACLE[chainId];
 
+  const manualVolOracleContract = await ethers.getContractAt(ManualVolOracle_ABI, manualVolOracle.address);
+  const optionId = await manualVolOracleContract.getOptionId(
+    getDeltaStep("MATIC"),
+    ETHER_ADDRESS[chainId],
+    ETHER_ADDRESS[chainId],
+    false
+  );
+  
   const pricer = await deploy("OptionsPremiumPricerETH", {
     from: deployer,
     contract: {
@@ -51,7 +60,7 @@ const main = async ({
       bytecode: OptionsPremiumPricerInStables_BYTECODE,
     },
     args: [
-      WETH_USDC_POOL[chainId],
+      optionId,
       manualVolOracle.address,
       underlyingOracle,
       stablesOracle,
@@ -65,7 +74,7 @@ const main = async ({
   const strikeSelection = await deploy("StrikeSelectionETH", {
     contract: "DeltaStrikeSelection",
     from: deployer,
-    args: [pricer.address, STRIKE_DELTA, ETH_STRIKE_STEP, STRIKE_STEP_DIVIDING_FACTOR],
+    args: [pricer.address, STRIKE_DELTA, STRIKE_STEP.MATIC],
   });
 
   console.log(
@@ -75,7 +84,7 @@ const main = async ({
   try {
     await run("verify:verify", {
       address: strikeSelection.address,
-      constructorArguments: [pricer.address, STRIKE_DELTA, ETH_STRIKE_STEP, STRIKE_STEP_DIVIDING_FACTOR],
+      constructorArguments: [pricer.address, STRIKE_DELTA, STRIKE_STEP.MATIC],
     });
   } catch (error) {
     console.log(error);

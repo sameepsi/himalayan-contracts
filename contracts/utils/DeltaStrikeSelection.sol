@@ -44,14 +44,13 @@ contract DeltaStrikeSelection is Ownable {
     constructor(
         address _optionsPremiumPricer,
         uint256 _delta,
-        uint256 _step,
-        uint256 _stepDividingFactor
+        uint256 _step
     ) {
         require(_optionsPremiumPricer != address(0), "!_optionsPremiumPricer");
         require(_delta > 0, "!_delta");
         require(_delta <= DELTA_MULTIPLIER, "newDelta cannot be more than 1");
         require(_step > 0, "!_step");
-        require(_stepDividingFactor > 0, "!_stepDividingFactor");
+
         optionsPremiumPricer = IOptionsPremiumPricer(_optionsPremiumPricer);
         volatilityOracle = IManualVolatilityOracle(
             IOptionsPremiumPricer(_optionsPremiumPricer).volatilityOracle()
@@ -65,8 +64,7 @@ contract DeltaStrikeSelection is Ownable {
                 )
                     .decimals();
 
-        // ex: step = 1000
-        step = _step.mul(_assetOracleMultiplier).div(_stepDividingFactor);
+        step = _step;
 
         assetOracleMultiplier = _assetOracleMultiplier;
     }
@@ -142,7 +140,7 @@ contract DeltaStrikeSelection is Ownable {
                 ? assetPrice.sub(assetPrice % step).sub(step)
                 : assetPrice.add(step - (assetPrice % step)).add(step);
         uint256 targetDelta = isPut ? DELTA_MULTIPLIER.sub(delta) : delta;
-        uint256 prevDelta = DELTA_MULTIPLIER;
+        uint256 prevDelta = isPut ? 0 : DELTA_MULTIPLIER;
 
         while (true) {
             uint256 currDelta =
@@ -262,7 +260,7 @@ contract DeltaStrikeSelection is Ownable {
     function setStep(uint256 newStep) external onlyOwner {
         require(newStep > 0, "!newStep");
         uint256 oldStep = step;
-        step = newStep.mul(assetOracleMultiplier);
+        step = newStep;
         emit StepSet(oldStep, newStep, msg.sender);
     }
 }

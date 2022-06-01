@@ -24,7 +24,8 @@ const main = async ({
     contract: "VaultLifecycle",
     from: deployer,
   });
-
+  console.log(`VaultLifeCycle @ ${lifecycle.address}`);
+  
   const vault = await deploy("RibbonThetaVaultLogic", {
     contract: "RibbonThetaVault",
     from: deployer,

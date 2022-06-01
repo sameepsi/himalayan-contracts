@@ -3,32 +3,29 @@ import { HardhatRuntimeEnvironment } from "hardhat/types";
 import {
   CHAINID,
   WETH_ADDRESS,
-  ETH_USDC_POOL,
   USDC_PRICE_ORACLE,
   ETH_PRICE_ORACLE,
   OptionsPremiumPricerInStables_BYTECODE,
 } from "../../constants/constants";
+
+import ManualVolOracle_ABI from "../../constants/abis/ManualVolOracle.json";
 import OptionsPremiumPricerInStables_ABI from "../../constants/abis/OptionsPremiumPricerInStables.json";
 import {
   AUCTION_DURATION,
-  AVAX_STRIKE_STEP,
-  ETH_STRIKE_STEP,
+  STRIKE_STEP,
   MANAGEMENT_FEE,
-  MATIC_STRIKE_STEP,
   PERFORMANCE_FEE,
   PREMIUM_DISCOUNT,
   STRIKE_DELTA,
-  STRIKE_STEP_DIVIDING_FACTOR,
-  STRIKE_STEP_DIVIDING_FACTOR_MATIC,
-} from "../../scripts/utils/constants";
+} from "../utils/constants";
+import { getDeltaStep } from "../../test/helpers/utils";
 
 const TOKEN_NAME = {
   [CHAINID.POLYGON_MAINNET]: "Ribbon MATIC Theta Vault",
   [CHAINID.ETH_MAINNET]: "Ribbon ETH Theta Vault",
   [CHAINID.ETH_KOVAN]: "Ribbon ETH Theta Vault",
   [CHAINID.AVAX_MAINNET]: "Ribbon AVAX Theta Vault",
-  [CHAINID.AVAX_FUJI]: "Ribbon AVAX Theta Vault",
-  [CHAINID.AURORA_MAINNET]: "Ribbon ETH Theta Vault",
+  [CHAINID.AVAX_FUJI]: "Ribbon AVAX Theta Vault"
 };
 
 const TOKEN_SYMBOL = {
@@ -36,26 +33,15 @@ const TOKEN_SYMBOL = {
   [CHAINID.ETH_MAINNET]: "rETH-THETA",
   [CHAINID.ETH_KOVAN]: "rETH-THETA",
   [CHAINID.AVAX_MAINNET]: "rAVAX-THETA",
-  [CHAINID.AVAX_FUJI]: "rAVAX-THETA",
-  [CHAINID.AURORA_MAINNET]: "rETH-THETA",
+  [CHAINID.AVAX_FUJI]: "rAVAX-THETA"
 };
 
-const STRIKE_STEP = {
-  [CHAINID.POLYGON_MAINNET]: MATIC_STRIKE_STEP,
-  [CHAINID.ETH_MAINNET]: ETH_STRIKE_STEP,
-  [CHAINID.ETH_KOVAN]: ETH_STRIKE_STEP,
-  [CHAINID.AVAX_MAINNET]: AVAX_STRIKE_STEP,
-  [CHAINID.AVAX_FUJI]: AVAX_STRIKE_STEP,
-  [CHAINID.AURORA_MAINNET]: ETH_STRIKE_STEP,
-};
-
-const STRIKE_STEP_FACTOR = {
-  [CHAINID.POLYGON_MAINNET]: STRIKE_STEP_DIVIDING_FACTOR_MATIC,
-  [CHAINID.ETH_MAINNET]: STRIKE_STEP_DIVIDING_FACTOR,
-  [CHAINID.ETH_KOVAN]: STRIKE_STEP_DIVIDING_FACTOR,
-  [CHAINID.AVAX_MAINNET]: STRIKE_STEP_DIVIDING_FACTOR,
-  [CHAINID.AVAX_FUJI]: STRIKE_STEP_DIVIDING_FACTOR,
-  [CHAINID.AURORA_MAINNET]: STRIKE_STEP_DIVIDING_FACTOR,
+const STRIKE_STEPS = {
+  [CHAINID.POLYGON_MAINNET]: STRIKE_STEP.MATIC,
+  [CHAINID.ETH_MAINNET]: STRIKE_STEP.ETH,
+  [CHAINID.ETH_KOVAN]: STRIKE_STEP.ETH,
+  [CHAINID.AVAX_MAINNET]: STRIKE_STEP.AVAX,
+  [CHAINID.AVAX_FUJI]: STRIKE_STEP.AVAX,
 };
 
 const main = async ({
@@ -77,6 +63,14 @@ const main = async ({
   const underlyingOracle = ETH_PRICE_ORACLE[chainId];
   const stablesOracle = USDC_PRICE_ORACLE[chainId];
 
+  const manualVolOracleContract = await ethers.getContractAt(ManualVolOracle_ABI, manualVolOracle.address);
+  const optionId = await manualVolOracleContract.getOptionId(
+    getDeltaStep("MATIC"),
+    WETH_ADDRESS[chainId],
+    WETH_ADDRESS[chainId],
+    false
+  );
+  
   const pricer = await deploy("OptionsPremiumPricerMatic", {
     from: deployer,
     contract: {
@@ -84,7 +78,7 @@ const main = async ({
       bytecode: OptionsPremiumPricerInStables_BYTECODE,
     },
     args: [
-      ETH_USDC_POOL[chainId],
+      optionId,
       manualVolOracle.address,
       underlyingOracle,
       stablesOracle,
@@ -98,7 +92,7 @@ const main = async ({
   const strikeSelection = await deploy("StrikeSelectionMATIC", {
     contract: "DeltaStrikeSelection",
     from: deployer,
-    args: [pricer.address, STRIKE_DELTA, STRIKE_STEP[chainId], STRIKE_STEP_FACTOR[chainId]],
+    args: [pricer.address, STRIKE_DELTA, STRIKE_STEPS[chainId]],
   });
 
   console.log(
@@ -111,21 +105,15 @@ const main = async ({
       constructorArguments: [
         pricer.address,
         STRIKE_DELTA,
-        STRIKE_STEP[chainId],
-        STRIKE_STEP_FACTOR[chainId]
+        STRIKE_STEPS[chainId]
       ],
     });
   } catch (error) {
     console.log(error);
   }
 
-  const lifecycle = await deployments.get("VaultLifecycle");
   const logicDeployment = await deployments.get("RibbonThetaVaultLogic");
-  const RibbonThetaVault = await ethers.getContractFactory("RibbonThetaVault", {
-    libraries: {
-      VaultLifecycle: lifecycle.address,
-    },
-  });
+  const RibbonThetaVault = await ethers.getContractFactory("RibbonThetaVault");
 
   const initArgs = [
     {

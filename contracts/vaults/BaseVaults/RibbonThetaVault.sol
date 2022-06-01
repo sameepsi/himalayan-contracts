@@ -267,6 +267,26 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
         liquidityGauge = newLiquidityGauge;
     }
 
+    /**
+     * @notice Sets the new optionsPurchaseQueue contract for this vault
+     * @param newOptionsPurchaseQueue is the address of the new optionsPurchaseQueue contract
+     */
+    function setOptionsPurchaseQueue(address newOptionsPurchaseQueue)
+        external
+        onlyOwner
+    {
+        optionsPurchaseQueue = newOptionsPurchaseQueue;
+    }
+
+    /**
+     * @notice Sets oToken Premium
+     * @param minPrice is the new oToken Premium in the units of 10**18
+     */
+    function setMinPrice(uint256 minPrice) external onlyKeeper {
+        require(minPrice > 0, "!minPrice");
+        currentOtokenPremium = minPrice;
+    }
+
     /************************************************
      *  VAULT OPERATIONS
      ***********************************************/
@@ -295,6 +315,17 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
         emit InstantWithdraw(msg.sender, amount, currentRound);
 
         transferAsset(msg.sender, amount);
+    }
+
+    /**
+     * @notice Initiates a withdrawal that can be processed once the round completes
+     * @param numShares is the number of shares to withdraw
+     */
+    function initiateWithdraw(uint256 numShares) external nonReentrant {
+        _initiateWithdraw(numShares);
+        currentQueuedWithdrawShares = currentQueuedWithdrawShares.add(
+            numShares
+        );
     }
 
     /**
@@ -338,28 +369,17 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
                 currentOption: oldOption,
                 delay: DELAY,
                 lastStrikeOverrideRound: lastStrikeOverrideRound,
-                overriddenStrikePrice: overriddenStrikePrice
+                overriddenStrikePrice: overriddenStrikePrice,
+                strikeSelection: strikeSelection,
+                optionsPremiumPricer: optionsPremiumPricer,
+                premiumDiscount: premiumDiscount
             });
 
-        (
-            address otokenAddress,
-            uint256 premium,
-            uint256 strikePrice,
-            uint256 delta
-        ) =
-            VaultLifecycle.commitAndClose(
-                strikeSelection,
-                optionsPremiumPricer,
-                premiumDiscount,
-                closeParams,
-                vaultParams,
-                vaultState
-            );
+        (address otokenAddress, uint256 strikePrice, uint256 delta) =
+            VaultLifecycle.commitAndClose(closeParams, vaultParams, vaultState);
 
         emit NewOptionStrikeSelected(strikePrice, delta);
 
-        ShareMath.assertUint104(premium);
-        currentOtokenPremium = uint104(premium);
         optionState.nextOption = otokenAddress;
 
         uint256 nextOptionReady = block.timestamp.add(DELAY);
@@ -395,24 +415,47 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
      * @notice Rolls the vault's funds into a new short position.
      */
     function rollToNextOption() external onlyKeeper nonReentrant {
+        uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
+
         (
             address newOption,
             uint256 lockedBalance,
             uint256 queuedWithdrawAmount
-        ) = _rollToNextOption(uint256(lastQueuedWithdrawAmount));
+        ) =
+            _rollToNextOption(
+                lastQueuedWithdrawAmount,
+                currQueuedWithdrawShares
+            );
 
         lastQueuedWithdrawAmount = queuedWithdrawAmount;
+
+        uint256 newQueuedWithdrawShares =
+            uint256(vaultState.queuedWithdrawShares).add(
+                currQueuedWithdrawShares
+            );
+        ShareMath.assertUint128(newQueuedWithdrawShares);
+        vaultState.queuedWithdrawShares = uint128(newQueuedWithdrawShares);
+
+        currentQueuedWithdrawShares = 0;
 
         ShareMath.assertUint104(lockedBalance);
         vaultState.lockedAmount = uint104(lockedBalance);
 
         emit OpenShort(newOption, lockedBalance, msg.sender);
 
-        VaultLifecycle.createShort(
-            GAMMA_CONTROLLER,
-            MARGIN_POOL,
+        uint256 optionsMintAmount =
+            VaultLifecycle.createShort(
+                GAMMA_CONTROLLER,
+                MARGIN_POOL,
+                newOption,
+                lockedBalance
+            );
+
+        VaultLifecycle.allocateOptions(
+            optionsPurchaseQueue,
             newOption,
-            lockedBalance
+            optionsMintAmount,
+            VaultLifecycle.QUEUE_OPTION_ALLOCATION
         );
 
         _startAuction();
@@ -428,18 +471,27 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
     function _startAuction() private {
         GnosisAuction.AuctionDetails memory auctionDetails;
 
-        uint256 currOtokenPremium = currentOtokenPremium;
+        address currentOtoken = optionState.currentOption;
 
-        require(currOtokenPremium > 0, "!currentOtokenPremium");
-
-        auctionDetails.oTokenAddress = optionState.currentOption;
+        auctionDetails.oTokenAddress = currentOtoken;
         auctionDetails.gnosisEasyAuction = GNOSIS_EASY_AUCTION;
         auctionDetails.asset = vaultParams.asset;
         auctionDetails.assetDecimals = vaultParams.decimals;
-        auctionDetails.oTokenPremium = currOtokenPremium;
+        auctionDetails.oTokenPremium = currentOtokenPremium;
         auctionDetails.duration = auctionDuration;
 
         optionAuctionID = VaultLifecycle.startAuction(auctionDetails);
+    }
+
+    /**
+     * @notice Sell the allocated options to the purchase queue post auction settlement
+     */
+    function sellOptionsToQueue() external onlyKeeper nonReentrant {
+        VaultLifecycle.sellOptionsToQueue(
+            optionsPurchaseQueue,
+            GNOSIS_EASY_AUCTION,
+            optionAuctionID
+        );
     }
 
     /**
@@ -454,6 +506,25 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
 
         vaultState.lockedAmount = uint104(
             uint256(vaultState.lockedAmount).sub(unlockedAssetAmount)
+        );
+    }
+
+    /**
+     * @notice Recovery function that returns an ERC20 token to the recipient
+     * @param token is the ERC20 token to recover from the vault
+     * @param recipient is the recipient of the recovered tokens
+     */
+    function recoverTokens(address token, address recipient)
+        external
+        onlyOwner
+    {
+        require(token != vaultParams.asset, "Vault asset not recoverable");
+        require(token != address(this), "Vault share not recoverable");
+        require(recipient != address(this), "Recipient cannot be vault");
+
+        IERC20(token).safeTransfer(
+            recipient,
+            IERC20(token).balanceOf(address(this))
         );
     }
 }

@@ -48,6 +48,7 @@
     "deploy": "npx hardhat deploy",
     "deploy-polygon": "npx hardhat deploy --network polygon",
     "etherscan-verify": "npx hardhat etherscan-verify",
+    "export-deployments": "npx hardhat export-deployments",
     "prepare": "husky install",
     "prettier:sol": "yarn prettier --write contracts/*",
     "lint:ts": "eslint '**/*.ts'",

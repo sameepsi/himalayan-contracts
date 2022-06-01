@@ -54,6 +54,34 @@ export default {
       loggingEnabled: true,
       accounts: {
         mnemonic: process.env.POLYGON_MNEMONIC,
+      }
+    },  
+    mainnet: {
+      url: process.env.TEST_URI,
+      chainId: CHAINID,
+      accounts: {
+        mnemonic: process.env.MAINNET_MNEMONIC,
+      },
+    },
+    kovan: {
+      url: process.env.KOVAN_URI,
+      chainId: 42,
+      accounts: {
+        mnemonic: process.env.KOVAN_MNEMONIC,
+      },
+    },
+    avax: {
+      url: process.env.AVAX_URI,
+      chainId: 43114,
+      accounts: {
+        mnemonic: process.env.AVAX_MNEMONIC,
+      },
+    },
+    fuji: {
+      url: process.env.FUJI_URI,
+      chainId: 43113,
+      accounts: {
+        mnemonic: process.env.FUJI_MNEMONIC,
       },
     },
   },

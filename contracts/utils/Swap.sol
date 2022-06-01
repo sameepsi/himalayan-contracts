@@ -54,6 +54,8 @@ contract Swap is ISwap, ReentrancyGuard, Ownable {
 
     mapping(address => uint256) public referralFees;
 
+    mapping(address => address) public authorized;
+
     /**
      * @notice Double mapping of signers to nonce groups to nonce states
      * @dev The nonce group is computed as nonce / 256, so each group of 256 sequential nonces uses the same key
@@ -193,23 +195,35 @@ contract Swap is ISwap, ReentrancyGuard, Ownable {
         offer.totalSales += totalSales - (fullySettled ? 1 : 0);
 
         if (fullySettled) {
+            offer.seller = address(0);
+            offer.oToken = address(0);
+            offer.biddingToken = address(0);
+            offer.minBidSize = 0;
+            offer.minPrice = 0;
+
             emit SettleOffer(swapId);
         }
     }
 
     /**
-     * @notice Close offer
-     * @param swapId unique identifier of the swap offer
+     * @notice Authorize a signer
+     * @param signer address Wallet of the signer to authorize
+     * @dev Emits an Authorize event
      */
-    function closeOffer(uint256 swapId) external override {
-        require(
-            swapOffers[swapId].seller == msg.sender,
-            "Only seller can close or offer doesn't exist"
-        );
+    function authorize(address signer) external override {
+        require(signer != address(0), "SIGNER_INVALID");
+        authorized[msg.sender] = signer;
+        emit Authorize(signer, msg.sender);
+    }
 
-        delete swapOffers[swapId];
-
-        emit CloseOffer(swapId);
+    /**
+     * @notice Revoke the signer
+     * @dev Emits a Revoke event
+     */
+    function revoke() external override {
+        address tmp = authorized[msg.sender];
+        delete authorized[msg.sender];
+        emit Revoke(tmp, msg.sender);
     }
 
     /**
@@ -238,7 +252,7 @@ contract Swap is ISwap, ReentrancyGuard, Ownable {
      * @return tuple of error count and bytes32[] memory array of error messages
      */
     function check(Bid calldata bid)
-        public
+        external
         view
         override
         returns (uint256, bytes32[] memory)
@@ -258,8 +272,11 @@ contract Swap is ISwap, ReentrancyGuard, Ownable {
             errCount++;
         }
 
-        if (signatory != bid.signerWallet) {
-            errors[errCount] = "SIGNATURE_MISMATCHED";
+        if (
+            bid.signerWallet != signatory &&
+            authorized[bid.signerWallet] != signatory
+        ) {
+            errors[errCount] = "UNAUTHORIZED";
             errCount++;
         }
 
@@ -329,13 +346,13 @@ contract Swap is ISwap, ReentrancyGuard, Ownable {
      * @param swapId unique identifier of the swap offer
      */
     function averagePriceForOffer(uint256 swapId)
-        public
+        external
         view
         override
         returns (uint256)
     {
         Offer storage offer = swapOffers[swapId];
-        require(offer.seller != address(0), "Offer does not exist");
+        require(offer.totalSize != 0, "Offer does not exist");
 
         uint256 availableSize = offer.availableSize;
 
@@ -381,8 +398,13 @@ contract Swap is ISwap, ReentrancyGuard, Ownable {
         require(DOMAIN_CHAIN_ID == getChainId(), "CHAIN_ID_CHANGED");
 
         address signatory = _getSignatory(bid);
+
+        if (bid.signerWallet != signatory) {
+            require(authorized[bid.signerWallet] == signatory, "UNAUTHORIZED");
+        }
+
         require(signatory != address(0), "SIGNATURE_INVALID");
-        require(signatory == bid.signerWallet, "SIGNATURE_MISMATCHED");
+
         require(_markNonceAsUsed(signatory, bid.nonce), "NONCE_ALREADY_USED");
         require(
             bid.buyAmount <= offer.availableSize,

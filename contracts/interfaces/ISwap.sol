@@ -85,11 +85,13 @@ interface ISwap {
 
     event SetFee(address referrer, uint256 fee);
 
-    event CloseOffer(uint256 swapId);
-
     event SettleOffer(uint256 swapId);
 
     event Cancel(uint256 indexed nonce, address indexed signerWallet);
+
+    event Authorize(address indexed signer, address indexed signerWallet);
+
+    event Revoke(address indexed signer, address indexed signerWallet);
 
     function createOffer(
         address oToken,
@@ -100,8 +102,6 @@ interface ISwap {
     ) external returns (uint256 swapId);
 
     function settleOffer(uint256 swapId, Bid[] calldata bids) external;
-
-    function closeOffer(uint256 swapId) external;
 
     function cancelNonce(uint256[] calldata nonces) external;
 
@@ -114,6 +114,10 @@ interface ISwap {
         external
         view
         returns (uint256);
+
+    function authorize(address sender) external;
+
+    function revoke() external;
 
     function nonceUsed(address, uint256) external view returns (bool);
 }
