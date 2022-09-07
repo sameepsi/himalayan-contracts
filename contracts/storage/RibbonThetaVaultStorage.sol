@@ -47,6 +47,16 @@ abstract contract RibbonThetaVaultStorageV6 {
     uint256 public currentQueuedWithdrawShares;
 }
 
+abstract contract RibbonThetaVaultStorageV7 {
+    // Vault Pauser Contract for the vault
+    address public vaultPauser;
+}
+
+abstract contract RibbonThetaVaultStorageV8 {
+    // DEPRECATED: Executor role for Swap offers
+    address private _offerExecutor;
+}
+
 // We are following Compound's method of upgrading new contract implementations
 // When we need to add new storage variables, we create a new version of RibbonThetaVaultStorage
 // e.g. RibbonThetaVaultStorage<versionNumber>, so finally it would look like
@@ -57,7 +67,9 @@ abstract contract RibbonThetaVaultStorage is
     RibbonThetaVaultStorageV3,
     RibbonThetaVaultStorageV4,
     RibbonThetaVaultStorageV5,
-    RibbonThetaVaultStorageV6
+    RibbonThetaVaultStorageV6,
+    RibbonThetaVaultStorageV7,
+    RibbonThetaVaultStorageV8
 {
 
 }

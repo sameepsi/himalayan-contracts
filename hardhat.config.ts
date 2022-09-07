@@ -55,6 +55,15 @@ export default {
       accounts: {
         mnemonic: process.env.POLYGON_MNEMONIC,
       }
+    },
+    polygon_test: {
+      url: process.env.POLYGON_URI,
+      chainId: 137,
+      deploy: ["scripts/deploy_polygon"],
+      loggingEnabled: true,
+      accounts: {
+        mnemonic: process.env.POLYGON_MNEMONIC,
+      }
     },  
     mainnet: {
       url: process.env.TEST_URI,

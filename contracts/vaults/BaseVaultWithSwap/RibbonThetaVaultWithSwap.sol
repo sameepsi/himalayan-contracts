@@ -18,6 +18,7 @@ import {
 import {ShareMath} from "../../libraries/ShareMath.sol";
 import {ILiquidityGauge} from "../../interfaces/ILiquidityGauge.sol";
 import {RibbonVault} from "./base/RibbonVault.sol";
+import {IVaultPauser} from "../../interfaces/IVaultPauser.sol";
 
 /**
  * UPGRADEABILITY: Since we use the upgradeable proxy pattern, we must observe
@@ -58,11 +59,6 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
 
     event NewOptionStrikeSelected(uint256 strikePrice, uint256 delta);
 
-    event PremiumDiscountSet(
-        uint256 premiumDiscount,
-        uint256 newPremiumDiscount
-    );
-
     event AuctionDurationSet(
         uint256 auctionDuration,
         uint256 newAuctionDuration
@@ -99,7 +95,6 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
      * @param _optionsPremiumPricer is the address of the contract with the
        black-scholes premium calculation logic
      * @param _strikeSelection is the address of the contract with strike selection logic
-     * @param _premiumDiscount is the vault's discount applied to the premium
      */
     struct InitParams {
         address _owner;
@@ -111,7 +106,6 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
         string _tokenSymbol;
         address _optionsPremiumPricer;
         address _strikeSelection;
-        uint32 _premiumDiscount;
     }
 
     /************************************************
@@ -166,55 +160,14 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
             _initParams._strikeSelection != address(0),
             "!_strikeSelection"
         );
-        require(
-            _initParams._premiumDiscount > 0 &&
-                _initParams._premiumDiscount <
-                100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
-            "!_premiumDiscount"
-        );
 
         optionsPremiumPricer = _initParams._optionsPremiumPricer;
         strikeSelection = _initParams._strikeSelection;
-        premiumDiscount = _initParams._premiumDiscount;
     }
 
     /************************************************
      *  SETTERS
      ***********************************************/
-
-    /**
-     * @notice Sets the new discount on premiums for options we are selling
-     * @param newPremiumDiscount is the premium discount
-     */
-    function setPremiumDiscount(uint256 newPremiumDiscount)
-        external
-        onlyKeeper
-    {
-        require(
-            newPremiumDiscount > 0 &&
-                newPremiumDiscount <= 100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER,
-            "Invalid discount"
-        );
-
-        emit PremiumDiscountSet(premiumDiscount, newPremiumDiscount);
-
-        premiumDiscount = newPremiumDiscount;
-    }
-
-    /**
-     * @notice Sets the new auction duration
-     * @param newAuctionDuration is the auction duration
-     */
-    function setAuctionDuration(uint256 newAuctionDuration) external onlyOwner {
-        require(
-            newAuctionDuration >= MIN_AUCTION_DURATION,
-            "Invalid auction duration"
-        );
-
-        emit AuctionDurationSet(auctionDuration, newAuctionDuration);
-
-        auctionDuration = newAuctionDuration;
-    }
 
     /**
      * @notice Sets the new strike selection contract
@@ -266,6 +219,14 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
     function setMinPrice(uint256 minPrice) external onlyKeeper {
         require(minPrice > 0, "!minPrice");
         currentOtokenPremium = minPrice;
+    }
+
+    /**
+     * @notice Sets the new Vault Pauser contract for this vault
+     * @param newVaultPauser is the address of the new vaultPauser contract
+     */
+    function setVaultPauser(address newVaultPauser) external onlyOwner {
+        vaultPauser = newVaultPauser;
     }
 
     /************************************************
@@ -349,7 +310,7 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
             oldOption != address(0) || vaultState.round == 1,
             "Round closed"
         );
-        _closeShort(optionState.currentOption);
+        _closeShort(oldOption);
 
         uint256 currQueuedWithdrawShares = currentQueuedWithdrawShares;
         (uint256 lockedBalance, uint256 queuedWithdrawAmount) =
@@ -413,13 +374,13 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
             VaultLifecycleWithSwap.CommitParams({
                 OTOKEN_FACTORY: OTOKEN_FACTORY,
                 USDC: USDC,
+                collateralAsset: vaultParams.asset,
                 currentOption: currentOption,
                 delay: DELAY,
                 lastStrikeOverrideRound: lastStrikeOverrideRound,
                 overriddenStrikePrice: overriddenStrikePrice,
                 strikeSelection: strikeSelection,
-                optionsPremiumPricer: optionsPremiumPricer,
-                premiumDiscount: premiumDiscount
+                optionsPremiumPricer: optionsPremiumPricer
             });
 
         (address otokenAddress, uint256 strikePrice, uint256 delta) =
@@ -457,13 +418,6 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
         _createOffer();
     }
 
-    /**
-     * @notice Create offer in the swap contract.
-     */
-    function createOffer() external onlyKeeper nonReentrant {
-        _createOffer();
-    }
-
     function _createOffer() private {
         address currentOtoken = optionState.currentOption;
         uint256 currOtokenPremium = currentOtokenPremium;
@@ -491,14 +445,24 @@ contract RibbonThetaVaultWithSwap is RibbonVault, RibbonThetaVaultStorage {
      * @notice Burn the remaining oTokens left over
      */
     function burnRemainingOTokens() external onlyKeeper nonReentrant {
-        uint256 unlockedAssetAmount =
-            VaultLifecycleWithSwap.burnOtokens(
-                GAMMA_CONTROLLER,
-                optionState.currentOption
-            );
+        VaultLifecycleWithSwap.burnOtokens(
+            GAMMA_CONTROLLER,
+            optionState.currentOption
+        );
+    }
 
-        vaultState.lockedAmount = uint104(
-            uint256(vaultState.lockedAmount).sub(unlockedAssetAmount)
+    /**
+     * @notice pause a user's vault position
+     */
+    function pausePosition() external {
+        address _vaultPauserAddress = vaultPauser;
+        require(_vaultPauserAddress != address(0)); // Removed revert msgs due to contract size limit
+        _redeem(0, true);
+        uint256 heldByAccount = balanceOf(msg.sender);
+        _approve(msg.sender, _vaultPauserAddress, heldByAccount);
+        IVaultPauser(_vaultPauserAddress).pausePosition(
+            msg.sender,
+            heldByAccount
         );
     }
 }
