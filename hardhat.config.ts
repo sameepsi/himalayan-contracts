@@ -52,9 +52,8 @@ export default {
       chainId: 137,
       deploy: ["scripts/deploy_polygon"],
       loggingEnabled: true,
-      accounts: {
-        mnemonic: process.env.POLYGON_MNEMONIC,
-      }
+      gasPrice: 100000000000,
+      accounts: process.env.PK.split(",")
     },
     polygon_test: {
       url: process.env.POLYGON_URI,
@@ -97,7 +96,7 @@ export default {
   namedAccounts: {
     deployer: {
       default: 0,
-      137: "0x06ba348b6a63472790dcc112a2b4ae43de307c73",
+      137: "0x84a9Ea1F5F2F4D0685147B1cD1374f470FcB76dB",
       1: "0x422f7Bb366608723c8fe61Ac6D923023dCCBC3d7",
       42: "0x422f7Bb366608723c8fe61Ac6D923023dCCBC3d7",
       43114: "0x422f7Bb366608723c8fe61Ac6D923023dCCBC3d7",
@@ -127,7 +126,7 @@ export default {
     },
     admin: {
       default: 0,
-      137: "0x84a9Ea1F5F2F4D0685147B1cD1374f470FcB76dB",
+      137: "0x56187FeB620A29E02043F3d9E3dC389d94c3FEA8",
       1: "0x88A9142fa18678003342a8Fd706Bd301E0FecEfd",
       42: "0x422f7Bb366608723c8fe61Ac6D923023dCCBC3d7",
       43114: "0x31351f2BD9e94813BCf0cA04B5E6e2b7ceAFC7c6",
@@ -137,7 +136,7 @@ export default {
     },
     feeRecipient: {
       default: 0,
-      137: "0x84a9Ea1F5F2F4D0685147B1cD1374f470FcB76dB",
+      137: "0x56187FeB620A29E02043F3d9E3dC389d94c3FEA8",
       1: "0xDAEada3d210D2f45874724BeEa03C7d4BBD41674", // Ribbon DAO
       42: "0x92Dd37fbc36cB7260F0d2BD09F9672525a028fB8",
       43114: "0x939cbb6BaBAad2b0533C2CACa8a4aFEc3ae06492",

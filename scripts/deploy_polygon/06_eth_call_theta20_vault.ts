@@ -19,6 +19,7 @@ import {
   STRIKE_STEP,
 } from "../utils/constants";
 import { getDeltaStep } from "../../test/helpers/utils";
+import { parseEther } from "ethers/lib/utils";
 
 const main = async ({
   network,
@@ -39,7 +40,7 @@ const main = async ({
   const { deploy } = deployments;
   const { deployer, owner, keeper, admin, feeRecipient } =
     await getNamedAccounts();
-  console.log(`03 - Deploying ETH Call Theta Vault on ${network.name}`);
+  console.log(`03 - Deploying ETH Call 20 Theta Vault on ${network.name}`);
 
   const manualVolOracle = await deployments.get("ManualVolOracle");
   const underlyingOracle = WETH_PRICE_ORACLE[chainId];
@@ -47,13 +48,13 @@ const main = async ({
 
   const manualVolOracleContract = await ethers.getContractAt(ManualVolOracle_ABI, manualVolOracle.address);
   const optionId = await manualVolOracleContract.getOptionId(
-    getDeltaStep("MATIC"),
+    "20",
     ETHER_ADDRESS[chainId],
     ETHER_ADDRESS[chainId],
     false
   );
   
-  const pricer = await deploy("OptionsPremiumPricerETH", {
+  const pricer = await deploy("OptionsPremiumPricerETH20", {
     from: deployer,
     contract: {
       abi: OptionsPremiumPricerInStables_ABI,
@@ -67,24 +68,25 @@ const main = async ({
     ],
   });
 
-  console.log(`RibbonThetaVaultETHCall pricer @ ${pricer.address}`);
+  console.log(`RibbonThetaVaultETHCall 20% pricer @ ${pricer.address}`);
 
   // Can't verify pricer because it's compiled with 0.7.3
 
-  const strikeSelection = await deploy("StrikeSelectionETH", {
-    contract: "DeltaStrikeSelection",
+  const strikeSelection = await deploy("StrikeSelectionETH20", {
+    contract: "ManualStrikeSelection",
     from: deployer,
-    args: [pricer.address, STRIKE_DELTA, STRIKE_STEP.MATIC],
+    args: [],
   });
 
+
   console.log(
-    `RibbonThetaVaultETHCall strikeSelection @ ${strikeSelection.address}`
+    `RibbonThetaVaultETHCall 20% strikeSelection @ ${strikeSelection.address}`
   );
 
   try {
     await run("verify:verify", {
       address: strikeSelection.address,
-      constructorArguments: [pricer.address, STRIKE_DELTA, STRIKE_STEP.MATIC],
+      constructorArguments: [],
     });
   } catch (error) {
     console.log(error);
@@ -106,8 +108,8 @@ const main = async ({
       _feeRecipient: feeRecipient,
       _managementFee: MANAGEMENT_FEE,
       _performanceFee: PERFORMANCE_FEE,
-      _tokenName: "Ribbon ETH Theta Vault",
-      _tokenSymbol: "rETH-THETA",
+      _tokenName: "Himalayan ETH Vault 20",
+      _tokenSymbol: "rETH20",
       _optionsPremiumPricer: pricer.address,
       _strikeSelection: strikeSelection.address,
       _premiumDiscount: PREMIUM_DISCOUNT,
@@ -121,7 +123,7 @@ const main = async ({
       asset: ETHER_ADDRESS[chainId],
       underlying: ETHER_ADDRESS[chainId],
       minimumSupply: BigNumber.from(10).pow(3),
-      cap: parseUnits("100", 8),
+      cap: parseEther("125"),
     },
   ];
   const initData = RibbonThetaVault.interface.encodeFunctionData(
@@ -129,13 +131,13 @@ const main = async ({
     initArgs
   );
 
-  const proxy = await deploy("RibbonThetaVaultETHCall", {
+  const proxy = await deploy("RibbonThetaVaultETHCall20", {
     contract: "AdminUpgradeabilityProxy",
     from: deployer,
     args: [logicDeployment.address, admin, initData],
   });
 
-  console.log(`RibbonThetaVaultETHCall @ ${proxy.address}`);
+  console.log(`RibbonThetaVaultETHCall 20% @ ${proxy.address}`);
 
   try {
     await run("verify:verify", {
@@ -146,7 +148,7 @@ const main = async ({
     console.log(error);
   }
 };
-main.tags = ["RibbonThetaVaultETHCall"];
+main.tags = ["RibbonThetaVaultETHCall20"];
 main.dependencies = ["ManualVolOracle", "RibbonThetaVaultLogic"];
 
 export default main;

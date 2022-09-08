@@ -10,7 +10,7 @@ const main = async ({
   const { deploy } = deployments;
   console.log("00 - Deploying ManualVolOracle on", network.name);
 
-  const { deployer, keeper } = await getNamedAccounts();
+  const { deployer } = await getNamedAccounts();
 
   const oracle = await deploy("ManualVolOracle", {
     from: deployer,
@@ -18,7 +18,7 @@ const main = async ({
       abi: ManualVolOracle_ABI,
       bytecode: ManualVolOracle_BYTECODE,
     },
-    args: [keeper],
+    args: [deployer],
   });
 
   console.log(`ManualVolOracle @ ${oracle.address}`);
