@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.12;
+pragma solidity =0.8.17;
 
-import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     SafeERC20
@@ -27,7 +26,6 @@ contract HimalayanVault is
     ERC20Upgradeable
 {
     using SafeERC20 for IERC20;
-    using SafeMath for uint256;
     using ShareMath for Vault.DepositReceipt;
 
     /************************************************
@@ -91,7 +89,7 @@ contract HimalayanVault is
     uint256 public constant PERIOD = 7 days;
 
     // Number of weeks per year = 52.142857 weeks * FEE_MULTIPLIER = 52142857
-    // Dividing by weeks per year requires doing num.mul(FEE_MULTIPLIER).div(WEEKS_PER_YEAR)
+    // Dividing by weeks per year requires doing (num * FEE_MULTIPLIER) / WEEKS_PER_YEAR
     uint256 private constant WEEKS_PER_YEAR = 52142857;
 
     // GAMMA_CONTROLLER is the top-level contract in Gamma protocol
@@ -209,9 +207,7 @@ contract HimalayanVault is
 
         feeRecipient = _feeRecipient;
         performanceFee = _performanceFee;
-        managementFee = _managementFee.mul(Vault.FEE_MULTIPLIER).div(
-            WEEKS_PER_YEAR
-        );
+        managementFee = (_managementFee * Vault.FEE_MULTIPLIER) / WEEKS_PER_YEAR;
         vaultParams = _vaultParams;
 
         uint256 assetBalance =
@@ -265,7 +261,7 @@ contract HimalayanVault is
 
         // We are dividing annualized management fee by num weeks in a year
         uint256 tmpManagementFee =
-            newManagementFee.mul(Vault.FEE_MULTIPLIER).div(WEEKS_PER_YEAR);
+            (newManagementFee * Vault.FEE_MULTIPLIER) / WEEKS_PER_YEAR;
 
         emit ManagementFeeSet(managementFee, newManagementFee);
 
@@ -361,7 +357,7 @@ contract HimalayanVault is
      */
     function _depositFor(uint256 amount, address creditor) private {
         uint256 currentRound = vaultState.round;
-        uint256 totalWithDepositedAmount = totalBalance().add(amount);
+        uint256 totalWithDepositedAmount = totalBalance() + amount;
 
         require(totalWithDepositedAmount <= vaultParams.cap, "Exceed cap");
         require(
@@ -385,7 +381,7 @@ contract HimalayanVault is
 
         // If we have a pending deposit in the current round, we add on to the pending deposit
         if (currentRound == depositReceipt.round) {
-            uint256 newAmount = uint256(depositReceipt.amount).add(amount);
+            uint256 newAmount = uint256(depositReceipt.amount) + amount;
             depositAmount = newAmount;
         }
 
@@ -397,7 +393,7 @@ contract HimalayanVault is
             unredeemedShares: uint128(unredeemedShares)
         });
 
-        uint256 newTotalPending = uint256(vaultState.totalPending).add(amount);
+        uint256 newTotalPending = uint256(vaultState.totalPending) + amount;
         ShareMath.assertUint128(newTotalPending);
 
         vaultState.totalPending = uint128(newTotalPending);
@@ -431,7 +427,7 @@ contract HimalayanVault is
 
         uint256 withdrawalShares;
         if (withdrawalIsSameRound) {
-            withdrawalShares = existingShares.add(numShares);
+            withdrawalShares = existingShares  + numShares;
         } else {
             require(existingShares == 0, "Existing withdraw");
             withdrawalShares = numShares;
@@ -462,7 +458,7 @@ contract HimalayanVault is
         // We leave the round number as non-zero to save on gas for subsequent writes
         withdrawals[msg.sender].shares = 0;
         vaultState.queuedWithdrawShares = uint128(
-            uint256(vaultState.queuedWithdrawShares).sub(withdrawalShares)
+            uint256(vaultState.queuedWithdrawShares) - withdrawalShares
         );
 
         uint256 withdrawAmount =
@@ -533,7 +529,7 @@ contract HimalayanVault is
 
         ShareMath.assertUint128(numShares);
         depositReceipts[msg.sender].unredeemedShares = uint128(
-            unredeemedShares.sub(numShares)
+            unredeemedShares - numShares
         );
 
         emit Redeem(msg.sender, numShares, depositReceipt.round);
@@ -696,7 +692,7 @@ contract HimalayanVault is
      */
     function shares(address account) public view returns (uint256) {
         (uint256 heldByAccount, uint256 heldByVault) = shareBalances(account);
-        return heldByAccount.add(heldByVault);
+        return heldByAccount  + heldByVault;
     }
 
     /**
@@ -745,9 +741,8 @@ contract HimalayanVault is
      */
     function totalBalance() public view returns (uint256) {
         return
-            uint256(vaultState.lockedAmount).add(
-                IERC20(vaultParams.asset).balanceOf(address(this))
-            );
+            uint256(vaultState.lockedAmount) +
+                IERC20(vaultParams.asset).balanceOf(address(this));
     }
 
     /**

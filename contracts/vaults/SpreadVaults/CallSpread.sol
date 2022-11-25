@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.12;
+pragma solidity =0.8.17;
 
-import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     SafeERC20
@@ -26,7 +25,6 @@ import {ISpreadToken} from "../../interfaces/IHimalayan.sol";
  */
 contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
     using SafeERC20 for IERC20;
-    using SafeMath for uint256;
     using ShareMath for Vault.DepositReceipt;
 
     /************************************************
@@ -124,6 +122,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
      * @param _gammaController is the contract address for opyn actions
      * @param _marginPool is the contract address for providing collateral to opyn
      * @param _gnosisEasyAuction is the contract address that facilitates gnosis auctions
+     * @param _spreadTokenLogic Spread token logic contract
      */
     constructor(
         address _wnative,
@@ -132,7 +131,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         address _gammaController,
         address _marginPool,
         address _gnosisEasyAuction,
-        address _token
+        address _spreadTokenLogic
     )
         HimalayanVault(
             _wnative,
@@ -140,7 +139,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
             _gammaController,
             _marginPool,
             _gnosisEasyAuction,
-            _token
+            _spreadTokenLogic
         )
     {
         require(_oTokenFactory != address(0), "!_oTokenFactory");
@@ -253,17 +252,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
     }
 
     /**
-     * @notice Sets the new optionsPurchaseQueue contract for this vault
-     * @param newOptionsPurchaseQueue is the address of the new optionsPurchaseQueue contract
-     */
-    function setOptionsPurchaseQueue(address newOptionsPurchaseQueue)
-        external
-        onlyOwner
-    {
-        optionsPurchaseQueue = newOptionsPurchaseQueue;
-    }
-
-    /**
      * @notice Sets oToken Premium
      * @param minPrice is the new oToken Premium in the units of 10**18
      */
@@ -292,9 +280,9 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         require(receiptAmount >= amount, "Exceed amount");
 
         // Subtraction underflow checks already ensure it is smaller than uint104
-        depositReceipt.amount = uint104(receiptAmount.sub(amount));
+        depositReceipt.amount = uint104(receiptAmount - amount);
         vaultState.totalPending = uint128(
-            uint256(vaultState.totalPending).sub(amount)
+            uint256(vaultState.totalPending) - amount
         );
 
         emit InstantWithdraw(msg.sender, amount, currentRound);
@@ -308,9 +296,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
      */
     function initiateWithdraw(uint256 numShares) external nonReentrant {
         _initiateWithdraw(numShares);
-        currentQueuedWithdrawShares = currentQueuedWithdrawShares.add(
-            numShares
-        );
+        currentQueuedWithdrawShares = currentQueuedWithdrawShares + numShares;
     }
 
     /**
@@ -319,7 +305,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
     function completeWithdraw() external nonReentrant {
         uint256 withdrawAmount = _completeWithdraw();
         lastQueuedWithdrawAmount = uint128(
-            uint256(lastQueuedWithdrawAmount).sub(withdrawAmount)
+            uint256(lastQueuedWithdrawAmount) - withdrawAmount
         );
     }
 
@@ -359,7 +345,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         spreadState.nextSpread = spread;
         spreadState.nextSpreadToken = spreadToken;
 
-        uint256 nextOptionReady = block.timestamp.add(DELAY);
+        uint256 nextOptionReady = block.timestamp + DELAY;
         require(
             nextOptionReady <= type(uint32).max,
             "Overflow nextOptionReady"
@@ -416,9 +402,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
             lastQueuedWithdrawAmount = queuedWithdrawAmount;
 
             uint256 newQueuedWithdrawShares =
-                uint256(vaultState.queuedWithdrawShares).add(
-                    currQueuedWithdrawShares
-                );
+                uint256(vaultState.queuedWithdrawShares) + currQueuedWithdrawShares;
             ShareMath.assertUint128(newQueuedWithdrawShares);
             vaultState.queuedWithdrawShares = uint128(newQueuedWithdrawShares);
 
@@ -451,13 +435,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
 
         ISpreadToken(spreadToken).mint(totalMinted);
 
-        VaultLifecycleSpread.allocateOptions(
-            optionsPurchaseQueue,
-            spreadToken,
-            totalMinted,
-            VaultLifecycleSpread.QUEUE_OPTION_ALLOCATION
-        );
-        //_startAuction();
     }
 
     /**
@@ -481,32 +458,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
 
         optionAuctionID = VaultLifecycleSpread.startAuction(auctionDetails);
     }
-
-    /**
-     * @notice Sell the allocated options to the purchase queue post auction settlement
-     */
-    function sellOptionsToQueue() external onlyKeeper nonReentrant {
-        VaultLifecycleSpread.sellOptionsToQueue(
-            optionsPurchaseQueue,
-            GNOSIS_EASY_AUCTION,
-            optionAuctionID
-        );
-    }
-
-    /**
-     * @notice Burn the remaining oTokens left over from gnosis auction.
-     */
-    /**function burnRemainingOTokens() external onlyKeeper nonReentrant {
-        uint256 unlockedAssetAmount =
-            VaultLifecycleSpread.burnOtokens(
-                GAMMA_CONTROLLER,
-                spreadState.currentSpread
-            );
-
-        vaultState.lockedAmount = uint104(
-            uint256(vaultState.lockedAmount).sub(unlockedAssetAmount)
-        );
-    }*/
 
     /**
      * @notice Recovery function that returns an ERC20 token to the recipient

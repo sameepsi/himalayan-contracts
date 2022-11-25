@@ -20,12 +20,14 @@ const main = async ({
 
   const chainId = network.config.chainId;
 
-  const lifecycle = await deploy("VaultLifecycle", {
-    contract: "VaultLifecycle",
+  const lifecycle = await deploy("VaultLifecycleSpread", {
+    contract: "VaultLifecycleSpread",
     from: deployer,
   });
-  console.log(`VaultLifeCycle @ ${lifecycle.address}`);
-  
+  console.log(`VaultLifecycleSpread @ ${lifecycle.address}`);
+
+  const spreadTokenLogic = await deployments.get("SpreadTokenLogic");
+  console.log(spreadTokenLogic.address);
   const vault = await deploy("CallSpreadLogic", {
     contract: "CallSpread",
     from: deployer,
@@ -36,12 +38,13 @@ const main = async ({
       GAMMA_CONTROLLER[chainId],
       MARGIN_POOL[chainId],
       GNOSIS_EASY_AUCTION[chainId],
+      spreadTokenLogic.address,
     ],
     libraries: {
-      VaultLifecycle: lifecycle.address,
+      VaultLifecycleSpread: lifecycle.address,
     },
   });
-  console.log(`RibbonThetaVaultLogic @ ${vault.address}`);
+  console.log(`CallSpreadLogic @ ${vault.address}`);
 
   try {
     await run("verify:verify", {
@@ -53,12 +56,13 @@ const main = async ({
         GAMMA_CONTROLLER[chainId],
         MARGIN_POOL[chainId],
         GNOSIS_EASY_AUCTION[chainId],
+        spreadTokenLogic.address,
       ],
     });
   } catch (error) {
     console.log(error);
   }
 };
-main.tags = ["RibbonThetaVaultLogic"];
+main.tags = ["CallSpreadLogic"];
 
 export default main;

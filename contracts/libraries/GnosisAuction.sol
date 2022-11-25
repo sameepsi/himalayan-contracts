@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.12;
+pragma solidity =0.8.17;
 
-import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {
     SafeERC20
@@ -14,7 +13,6 @@ import {Vault} from "./Vault.sol";
 import {IRibbonThetaVault} from "../interfaces/IRibbonThetaVault.sol";
 
 library GnosisAuction {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     event InitiateGnosisAuction(
@@ -71,14 +69,14 @@ library GnosisAuction {
         // and underlying for calls
         uint256 minBidAmount =
             DSMath.wmul(
-                oTokenSellAmount.mul(10**10),
+                oTokenSellAmount * (10**10),
                 auctionDetails.premium
             );
 
         minBidAmount = auctionDetails.assetDecimals > 18
-            ? minBidAmount.mul(10**(auctionDetails.assetDecimals.sub(18)))
-            : minBidAmount.div(
-                10**(uint256(18).sub(auctionDetails.assetDecimals))
+            ? minBidAmount * (10**(auctionDetails.assetDecimals - (18)))
+            : minBidAmount / (
+                10**(uint256(18) - (auctionDetails.assetDecimals))
             );
 
         require(
@@ -86,7 +84,7 @@ library GnosisAuction {
             "optionPremium * oTokenSellAmount > type(uint96) max value!"
         );
 
-        uint256 auctionEnd = block.timestamp.add(auctionDetails.duration);
+        uint256 auctionEnd = block.timestamp + (auctionDetails.duration);
 
         auctionID = IGnosisAuction(auctionDetails.gnosisEasyAuction)
             .initiateAuction(
@@ -133,15 +131,15 @@ library GnosisAuction {
         // calculate how much to allocate
         sellAmount = bidDetails
             .lockedBalance
-            .mul(bidDetails.optionAllocation)
-            .div(100 * Vault.OPTION_ALLOCATION_MULTIPLIER);
+            * (bidDetails.optionAllocation)
+            / (100 * Vault.OPTION_ALLOCATION_MULTIPLIER);
 
         // divide the `asset` sellAmount by the target premium per oToken to
         // get the number of oTokens to buy (8 decimals)
         buyAmount = sellAmount
-            .mul(10**(bidDetails.assetDecimals.add(Vault.OTOKEN_DECIMALS)))
-            .div(bidDetails.optionPremium)
-            .div(10**bidDetails.assetDecimals);
+            * (10**(bidDetails.assetDecimals + (Vault.OTOKEN_DECIMALS)))
+            / (bidDetails.optionPremium)
+            / (10**bidDetails.assetDecimals);
 
         require(
             sellAmount <= type(uint96).max,
@@ -243,7 +241,7 @@ library GnosisAuction {
             );
 
         // Apply a discount to incentivize arbitraguers
-        optionPremium = optionPremium.mul(premiumDiscount).div(
+        optionPremium = optionPremium / (premiumDiscount) / (
             100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER
         );
 

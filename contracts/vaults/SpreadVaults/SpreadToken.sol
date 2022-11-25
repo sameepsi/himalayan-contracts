@@ -1,12 +1,7 @@
-pragma solidity =0.8.12;
+pragma solidity =0.8.17;
 
 import "./SpreadBaseToken.sol";
-import {
-    IOtokenFactory,
-    IOtoken,
-    IController,
-    GammaTypes
-} from "../../interfaces/GammaInterface.sol";
+import {IController} from "../../interfaces/GammaInterface.sol";
 
 import {ISpreadToken} from "../../interfaces/IHimalayan.sol";
 

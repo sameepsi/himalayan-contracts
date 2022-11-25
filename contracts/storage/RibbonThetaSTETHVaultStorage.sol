@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.12;
+pragma solidity =0.8.17;
 
 abstract contract RibbonThetaSTETHVaultStorageV1 {
     // Logic contract used to price options

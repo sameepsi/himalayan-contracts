@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.12;
+pragma solidity =0.8.17;
 
-import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Vault} from "./Vault.sol";
@@ -16,12 +15,10 @@ import {
 } from "../interfaces/GammaInterface.sol";
 import {IERC20Detailed} from "../interfaces/IERC20Detailed.sol";
 import {IGnosisAuction} from "../interfaces/IGnosisAuction.sol";
-import {IOptionsPurchaseQueue} from "../interfaces/IOptionsPurchaseQueue.sol";
 import {SupportsNonCompliantERC20} from "./SupportsNonCompliantERC20.sol";
 import {IOptionsPremiumPricer} from "../interfaces/IHimalayan.sol";
 
 library VaultLifecycleSpread {
-    using SafeMath for uint256;
     using SupportsNonCompliantERC20 for IERC20;
     using Clones for address;
 
@@ -153,7 +150,7 @@ library VaultLifecycleSpread {
         // we just assume all options use USDC as the strike
         require(otoken.strikeAsset() == USDC, "strikeAsset != USDC");
 
-        uint256 readyAt = block.timestamp.add(delay);
+        uint256 readyAt = block.timestamp  + delay;
         require(otoken.expiryTimestamp() >= readyAt, "Expiry before delay");
     }
 
@@ -210,7 +207,7 @@ library VaultLifecycleSpread {
 
         // Deduct older queued withdraws so we don't charge fees on them
         uint256 balanceForVaultFees =
-            currentBalance.sub(params.lastQueuedWithdrawAmount);
+            currentBalance - params.lastQueuedWithdrawAmount;
 
         {
             (performanceFeeInAsset, , totalVaultFee) = VaultLifecycleSpread
@@ -225,23 +222,22 @@ library VaultLifecycleSpread {
 
         // Take into account the fee
         // so we can calculate the newPricePerShare
-        currentBalance = currentBalance.sub(totalVaultFee);
+        currentBalance = currentBalance - totalVaultFee;
 
         {
             newPricePerShare = ShareMath.pricePerShare(
-                params.currentShareSupply.sub(lastQueuedWithdrawShares),
-                currentBalance.sub(params.lastQueuedWithdrawAmount),
+                params.currentShareSupply - lastQueuedWithdrawShares,
+                currentBalance - params.lastQueuedWithdrawAmount,
                 pendingAmount,
                 params.decimals
             );
 
-            queuedWithdrawAmount = params.lastQueuedWithdrawAmount.add(
+            queuedWithdrawAmount = params.lastQueuedWithdrawAmount +
                 ShareMath.sharesToAsset(
                     params.currentQueuedWithdrawShares,
                     newPricePerShare,
                     params.decimals
-                )
-            );
+                );
 
             // After closing the short, if the options expire in-the-money
             // vault pricePerShare would go down because vault's asset balance decreased.
@@ -254,7 +250,7 @@ library VaultLifecycleSpread {
         }
 
         return (
-            currentBalance.sub(queuedWithdrawAmount), // new locked balance subtracts the queued withdrawals
+            currentBalance - queuedWithdrawAmount, // new locked balance subtracts the queued withdrawals
             queuedWithdrawAmount,
             newPricePerShare,
             mintShares,
@@ -282,7 +278,7 @@ library VaultLifecycleSpread {
     ) public returns (uint256 mintAmount, uint256 collateralUsed) {
         IController controller = IController(gammaController);
         uint256 newVaultID =
-            (controller.getAccountVaultCounter(address(this))).add(1);
+            (controller.getAccountVaultCounter(address(this))) + 1;
 
         // An otoken's collateralAsset is the vault's `asset`
         // So in the context of performing Opyn short operations we call them collateralAsset
@@ -309,16 +305,16 @@ library VaultLifecycleSpread {
             // MarginCalculatorInterface(0x7A48d10f372b3D7c60f6c9770B91398e4ccfd3C7).getExcessCollateral(vault)
             // to see how much dust (or excess collateral) is left behind.
             mintAmount = depositAmount
-                .mul(10**Vault.OTOKEN_DECIMALS)
-                .mul(10**18) // we use 10**18 to give extra precision
-                .div(oToken.strikePrice().mul(10**(10 + collateralDecimals)));
+                * (10**Vault.OTOKEN_DECIMALS)
+                * (10**18) // we use 10**18 to give extra precision
+                / (oToken.strikePrice() * (10**(10 + collateralDecimals)));
         } else {
             mintAmount = depositAmount;
 
             if (collateralDecimals > 8) {
-                uint256 scaleBy = 10**(collateralDecimals.sub(8)); // oTokens have 8 decimals
+                uint256 scaleBy = 10**(collateralDecimals - 8); // oTokens have 8 decimals
                 if (mintAmount > scaleBy) {
-                    mintAmount = depositAmount.div(scaleBy); // scale down from 10**18 to 10**8
+                    mintAmount = depositAmount / (scaleBy); // scale down from 10**18 to 10**8
                 }
             }
         }
@@ -445,9 +441,9 @@ library VaultLifecycleSpread {
         uint256 longStrike = IOtoken(spread[1]).strikePrice();
         
         //TODO need to change this. Hard-coded decimals as of now
-        collateralUsed = ((((longStrike).sub(shortStrike)).mul(1e10)).div(longStrike)).mul(mintAmount);
+        collateralUsed = (((longStrike - shortStrike) * (1e10)) / longStrike) * (mintAmount);
 
-        uint256 collateralToBeWithdrawn = (collateralAmount.sub(collateralUsed));
+        uint256 collateralToBeWithdrawn = (collateralAmount - collateralUsed);
 
         IController.ActionArgs[] memory actions =
             new IController.ActionArgs[](3);
@@ -535,7 +531,7 @@ library VaultLifecycleSpread {
 
         ISpreadToken(spreadToken).settleVault();
 
-        return endCollateralBalance.sub(startCollateralBalance);
+        return endCollateralBalance - startCollateralBalance;
     }
 
     /**
@@ -580,7 +576,7 @@ library VaultLifecycleSpread {
 
         uint256 endAssetBalance = IERC20(asset).balanceOf(address(this));
 
-        return endAssetBalance.sub(startAssetBalance);
+        return endAssetBalance - startAssetBalance;
     }
 
     /**
@@ -637,7 +633,7 @@ library VaultLifecycleSpread {
             address(this), // address to transfer to
             address(collateralToken), // withdrawn asset
             vaultID, // vaultId
-            vault.collateralAmounts[0].mul(numOTokensToBurn).div(
+            vault.collateralAmounts[0] * (numOTokensToBurn) / (
                 vault.shortAmounts[0]
             ), // amount
             0, //index
@@ -648,7 +644,7 @@ library VaultLifecycleSpread {
 
         uint256 endCollateralBalance = collateralToken.balanceOf(address(this));
 
-        return endCollateralBalance.sub(startCollateralBalance);
+        return endCollateralBalance - startCollateralBalance;
     }
 
     /**
@@ -681,7 +677,7 @@ library VaultLifecycleSpread {
         // so we just do not charge anything on the first round
         uint256 lockedBalanceSansPending =
             currentBalance > pendingAmount
-                ? currentBalance.sub(pendingAmount)
+                ? currentBalance - pendingAmount
                 : 0;
 
         uint256 _performanceFeeInAsset;
@@ -696,17 +692,17 @@ library VaultLifecycleSpread {
         if (lockedBalanceSansPending > lastLockedAmount) {
             _performanceFeeInAsset = performanceFeePercent > 0
                 ? lockedBalanceSansPending
-                    .sub(lastLockedAmount)
-                    .mul(performanceFeePercent)
-                    .div(100 * Vault.FEE_MULTIPLIER)
+                    - (lastLockedAmount)
+                    * (performanceFeePercent)
+                    / (100 * Vault.FEE_MULTIPLIER)
                 : 0;
             _managementFeeInAsset = managementFeePercent > 0
-                ? lockedBalanceSansPending.mul(managementFeePercent).div(
+                ? lockedBalanceSansPending * (managementFeePercent) / (
                     100 * Vault.FEE_MULTIPLIER
                 )
                 : 0;
 
-            _vaultFee = _performanceFeeInAsset.add(_managementFeeInAsset);
+            _vaultFee = _performanceFeeInAsset + _managementFeeInAsset;
         }
 
         return (_performanceFeeInAsset, _managementFeeInAsset, _vaultFee);
@@ -829,7 +825,7 @@ library VaultLifecycleSpread {
             );
 
         // Apply a discount to incentivize arbitraguers
-        optionPremium = optionPremium.mul(premiumDiscount).div(
+        optionPremium = optionPremium * (premiumDiscount) / (
             100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER
         );
 
@@ -902,63 +898,6 @@ library VaultLifecycleSpread {
     }
 
     /**
-     * @notice Allocates the vault's minted options to the OptionsPurchaseQueue contract
-     * @dev Skipped if the optionsPurchaseQueue doesn't exist
-     * @param optionsPurchaseQueue is the OptionsPurchaseQueue contract
-     * @param option is the minted option
-     * @param optionsAmount is the amount of options minted
-     * @param optionAllocation is the maximum % of options to allocate towards the purchase queue (will only allocate
-     *  up to the amount that is on the queue)
-     * @return allocatedOptions is the amount of options that ended up getting allocated to the OptionsPurchaseQueue
-     */
-    function allocateOptions(
-        address optionsPurchaseQueue,
-        address option,
-        uint256 optionsAmount,
-        uint256 optionAllocation
-    ) external returns (uint256 allocatedOptions) {
-        // Skip if optionsPurchaseQueue is address(0)
-        if (optionsPurchaseQueue != address(0)) {
-            allocatedOptions = optionsAmount.mul(optionAllocation).div(
-                100 * Vault.OPTION_ALLOCATION_MULTIPLIER
-            );
-            allocatedOptions = IOptionsPurchaseQueue(optionsPurchaseQueue)
-                .getOptionsAllocation(address(this), allocatedOptions);
-
-            if (allocatedOptions != 0) {
-                IERC20(option).approve(optionsPurchaseQueue, allocatedOptions);
-                IOptionsPurchaseQueue(optionsPurchaseQueue).allocateOptions(
-                    allocatedOptions
-                );
-            }
-        }
-
-        return allocatedOptions;
-    }
-
-    /**
-     * @notice Sell the allocated options to the purchase queue post auction settlement
-     * @dev Reverts if the auction hasn't settled yet
-     * @param optionsPurchaseQueue is the OptionsPurchaseQueue contract
-     * @param gnosisEasyAuction The address of the Gnosis Easy Auction contract
-     * @return totalPremiums Total premiums earnt by the vault
-     */
-    function sellOptionsToQueue(
-        address optionsPurchaseQueue,
-        address gnosisEasyAuction,
-        uint256 optionAuctionID
-    ) external returns (uint256) {
-        uint256 settlementPrice =
-            getAuctionSettlementPrice(gnosisEasyAuction, optionAuctionID);
-        require(settlementPrice != 0, "!settlementPrice");
-
-        return
-            IOptionsPurchaseQueue(optionsPurchaseQueue).sellToBuyers(
-                settlementPrice
-            );
-    }
-
-    /**
      * @notice Gets the settlement price of a settled auction
      * @param gnosisEasyAuction The address of the Gnosis Easy Auction contract
      * @return settlementPrice Auction settlement price
@@ -980,10 +919,10 @@ library VaultLifecycleSpread {
             // settlementPrice = clearingPriceOrder.sellAmount / clearingPriceOrder.buyAmount
             return
                 (10**Vault.OTOKEN_DECIMALS)
-                    .mul(
+                    * (
                     uint96(uint256(clearingPriceOrder)) // sellAmount
                 )
-                    .div(
+                    / (
                     uint96(uint256(clearingPriceOrder) >> 96) // buyAmount
                 );
         }

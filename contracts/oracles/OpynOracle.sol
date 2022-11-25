@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.12;
+pragma solidity ^0.8.17;
 
 import {IOracle} from "../interfaces/GammaInterface.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";

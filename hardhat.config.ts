@@ -25,10 +25,10 @@ export default {
     mnemonic: process.env.TEST_MNEMONIC,
   },
   solidity: {
-    version: "0.8.12",
+    version: "0.8.17",
     settings: {
       optimizer: {
-        runs: 200,
+        runs: 0,
         enabled: true,
       },
     },
@@ -153,6 +153,12 @@ export default {
   },
   gasReporter: {
     enabled: true,
+  },
+  contractSizer: {
+    alphaSort: true,
+    disambiguatePaths: false,
+    runOnCompile: true,
+    strict: true,
   },
 };
 

@@ -4,7 +4,7 @@
 // BokkyPooBah's DateTime Library v1.01
 // ----------------------------------------------------------------------------
 
-pragma solidity =0.8.12;
+pragma solidity =0.8.17;
 
 library DateTime {
     uint256 constant SECONDS_PER_DAY = 24 * 60 * 60;
