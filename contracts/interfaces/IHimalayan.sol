@@ -2,7 +2,7 @@
 pragma solidity =0.8.12;
 import {Vault} from "../libraries/Vault.sol";
 
-interface IRibbonVault {
+interface IHimalayan {
     function deposit(uint256 amount) external;
 
     function depositETH() external payable;
@@ -14,11 +14,11 @@ interface IRibbonVault {
     function vaultParams() external view returns (Vault.VaultParams memory);
 }
 
-interface IStrikeSelection {
-    function getStrikePrice(uint256 expiryTimestamp, bool isPut)
+interface IStrikeSelectionSpread {
+    function getStrikePrices(uint256 expiryTimestamp, bool isPut)
         external
         view
-        returns (uint256, uint256);
+        returns (uint256[] memory, uint256[] memory);
 
     function delta() external view returns (uint256);
 }
@@ -50,4 +50,21 @@ interface IOptionsPremiumPricer {
     function volatilityOracle() external view returns (address);
 
     function optionId() external view returns (bytes32);
+}
+
+interface ISpreadToken {
+
+    function init(
+        string calldata name,
+        string calldata symbol,
+        address _asset,
+        address _underlying
+    )
+        external;
+
+    function mint(uint256 amount) external;
+
+    function settleVault() external;
+
+    function burnAndClaim() external;
 }

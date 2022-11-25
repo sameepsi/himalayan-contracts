@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.4;
+pragma solidity =0.8.12;
 
 interface IVaultPauser {
     /// @notice pause vault position of an account with max amount

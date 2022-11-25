@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.4;
+pragma solidity =0.8.12;
 
 interface IWSTETH {
     function getStETHByWstETH(uint256 _amount) external view returns (uint256);

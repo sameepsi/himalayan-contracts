@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.4;
+pragma solidity =0.8.12;
 
 import {ISAVAX} from "../interfaces/ISAVAX.sol";
 import {IRibbonVault} from "../interfaces/IRibbon.sol";

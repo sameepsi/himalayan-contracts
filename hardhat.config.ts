@@ -25,7 +25,7 @@ export default {
     mnemonic: process.env.TEST_MNEMONIC,
   },
   solidity: {
-    version: "0.8.4",
+    version: "0.8.12",
     settings: {
       optimizer: {
         runs: 200,

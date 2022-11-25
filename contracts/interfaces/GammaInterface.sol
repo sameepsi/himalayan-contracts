@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.4;
+pragma solidity =0.8.12;
 
 library GammaTypes {
     // vault is a struct of 6 arrays that describe a position a user has, a user can have multiple vaults.
@@ -160,4 +160,14 @@ interface IOracle {
     function updateAssetPricer(address _asset, address _pricer) external;
 
     function getPrice(address _asset) external view returns (uint256);
+
+    function isDisputePeriodOver(address _asset, uint256 _expiryTimestamp) external view returns (bool);
+
+    function getExpiryPrice(address _asset, uint256 _expiryTimestamp) external view returns (uint256, bool);
+    
+    function setExpiryPrice(
+        address _asset,
+        uint256 _expiryTimestamp,
+        uint256 _price
+    ) external;
 }

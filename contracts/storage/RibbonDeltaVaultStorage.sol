@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.4;
+pragma solidity =0.8.12;
 import {IRibbonThetaVault} from "../interfaces/IRibbonThetaVault.sol";
 import {Vault} from "../libraries/Vault.sol";
 

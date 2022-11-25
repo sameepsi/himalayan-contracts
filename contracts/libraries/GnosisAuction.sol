@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.4;
+pragma solidity =0.8.12;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -33,16 +33,16 @@ library GnosisAuction {
     );
 
     struct AuctionDetails {
-        address oTokenAddress;
+        address tokenAddress;// Token to sell
         address gnosisEasyAuction;
         address asset;
         uint256 assetDecimals;
-        uint256 oTokenPremium;
+        uint256 premium;
         uint256 duration;
     }
 
     struct BidDetails {
-        address oTokenAddress;
+        address tokenAddress;// Token to sell
         address gnosisEasyAuction;
         address asset;
         uint256 assetDecimals;
@@ -58,12 +58,12 @@ library GnosisAuction {
         returns (uint256 auctionID)
     {
         uint256 oTokenSellAmount =
-            getOTokenSellAmount(auctionDetails.oTokenAddress);
+            getOTokenSellAmount(auctionDetails.tokenAddress);
         require(oTokenSellAmount > 0, "No otokens to sell");
 
-        IERC20(auctionDetails.oTokenAddress).safeApprove(
+        IERC20(auctionDetails.tokenAddress).safeApprove(
             auctionDetails.gnosisEasyAuction,
-            IERC20(auctionDetails.oTokenAddress).balanceOf(address(this))
+            IERC20(auctionDetails.tokenAddress).balanceOf(address(this))
         );
 
         // minBidAmount is total oTokens to sell * premium per oToken
@@ -72,7 +72,7 @@ library GnosisAuction {
         uint256 minBidAmount =
             DSMath.wmul(
                 oTokenSellAmount.mul(10**10),
-                auctionDetails.oTokenPremium
+                auctionDetails.premium
             );
 
         minBidAmount = auctionDetails.assetDecimals > 18
@@ -91,7 +91,7 @@ library GnosisAuction {
         auctionID = IGnosisAuction(auctionDetails.gnosisEasyAuction)
             .initiateAuction(
             // address of oToken we minted and are selling
-            auctionDetails.oTokenAddress,
+            auctionDetails.tokenAddress,
             // address of asset we want in exchange for oTokens. Should match vault `asset`
             auctionDetails.asset,
             // orders can be cancelled at any time during the auction
@@ -115,7 +115,7 @@ library GnosisAuction {
         );
 
         emit InitiateGnosisAuction(
-            auctionDetails.oTokenAddress,
+            auctionDetails.tokenAddress,
             auctionDetails.asset,
             auctionID,
             msg.sender
@@ -178,7 +178,7 @@ library GnosisAuction {
 
         emit PlaceAuctionBid(
             bidDetails.auctionId,
-            bidDetails.oTokenAddress,
+            bidDetails.tokenAddress,
             sellAmount,
             buyAmount,
             bidDetails.bidder
@@ -206,7 +206,7 @@ library GnosisAuction {
         );
     }
 
-    function getOTokenSellAmount(address oTokenAddress)
+    function getOTokenSellAmount(address tokenAddress)
         internal
         view
         returns (uint256)
@@ -214,7 +214,7 @@ library GnosisAuction {
         // We take our current oToken balance. That will be our sell amount
         // but otokens will be transferred to gnosis.
         uint256 oTokenSellAmount =
-            IERC20(oTokenAddress).balanceOf(address(this));
+            IERC20(tokenAddress).balanceOf(address(this));
 
         require(
             oTokenSellAmount <= type(uint96).max,
@@ -225,11 +225,11 @@ library GnosisAuction {
     }
 
     function getOTokenPremiumInStables(
-        address oTokenAddress,
+        address tokenAddress,
         address optionsPremiumPricer,
         uint256 premiumDiscount
     ) internal view returns (uint256) {
-        IOtoken newOToken = IOtoken(oTokenAddress);
+        IOtoken newOToken = IOtoken(tokenAddress);
         IOptionsPremiumPricer premiumPricer =
             IOptionsPremiumPricer(optionsPremiumPricer);
 

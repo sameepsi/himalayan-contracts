@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity =0.8.4;
+pragma solidity =0.8.12;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -473,11 +473,11 @@ contract RibbonThetaVault is RibbonVault, RibbonThetaVaultStorage {
 
         address currentOtoken = optionState.currentOption;
 
-        auctionDetails.oTokenAddress = currentOtoken;
+        auctionDetails.tokenAddress = currentOtoken;
         auctionDetails.gnosisEasyAuction = GNOSIS_EASY_AUCTION;
         auctionDetails.asset = vaultParams.asset;
         auctionDetails.assetDecimals = vaultParams.decimals;
-        auctionDetails.oTokenPremium = currentOtokenPremium;
+        auctionDetails.premium = currentOtokenPremium;
         auctionDetails.duration = auctionDuration;
 
         optionAuctionID = VaultLifecycle.startAuction(auctionDetails);

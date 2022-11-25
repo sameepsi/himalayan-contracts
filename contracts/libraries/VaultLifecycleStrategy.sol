@@ -3,12 +3,10 @@ pragma solidity =0.8.12;
 
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {
-    SafeERC20
-} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {Vault} from "./Vault.sol";
 import {ShareMath} from "./ShareMath.sol";
-import {IStrikeSelection} from "../interfaces/IRibbon.sol";
+import {IStrikeSelectionSpread, ISpreadToken} from "../interfaces/IHimalayan.sol";
 import {GnosisAuction} from "./GnosisAuction.sol";
 import {
     IOtokenFactory,
@@ -17,75 +15,111 @@ import {
     GammaTypes
 } from "../interfaces/GammaInterface.sol";
 import {IERC20Detailed} from "../interfaces/IERC20Detailed.sol";
-import {ISwap} from "../interfaces/ISwap.sol";
+import {IGnosisAuction} from "../interfaces/IGnosisAuction.sol";
 import {IOptionsPurchaseQueue} from "../interfaces/IOptionsPurchaseQueue.sol";
 import {SupportsNonCompliantERC20} from "./SupportsNonCompliantERC20.sol";
-import {IOptionsPremiumPricer} from "../interfaces/IRibbon.sol";
+import {IOptionsPremiumPricer} from "../interfaces/IHimalayan.sol";
 
-library VaultLifecycleWithSwap {
+library VaultLifecycleStrategy {
     using SafeMath for uint256;
     using SupportsNonCompliantERC20 for IERC20;
-    using SafeERC20 for IERC20;
+    using Clones for address;
 
-    struct CommitParams {
+    struct CloseParams {
         address OTOKEN_FACTORY;
         address USDC;
-        address collateralAsset;
-        address currentOption;
+        address[] currentSpread;
         uint256 delay;
-        uint16 lastStrikeOverrideRound;
-        uint256 overriddenStrikePrice;
         address strikeSelection;
         address optionsPremiumPricer;
+        uint256 premiumDiscount;
+        address SPREAD_TOKEN_IMPL;
     }
 
+    /// @notice Default maximum option allocation for the queue (50%)
+    uint256 internal constant QUEUE_OPTION_ALLOCATION = 5000;
+
     /**
-     * @notice Sets the next option the vault will be shorting, and calculates its premium for the auction
-     * @param commitParams is the struct with details on previous option and strike selection details
+     * @notice Sets the next spread for the vault, and calculates its premium for the auction
+     * @param closeParams is the struct with details on previous spread and strike selection details
      * @param vaultParams is the struct with vault general data
      * @param vaultState is the struct with vault accounting state
-     * @return otokenAddress is the address of the new option
-     * @return strikePrice is the strike price of the new option
-     * @return delta is the delta of the new option
+     * @return spread addresses of the new short and long options
+     * @return strikePrices is the strike prices of the options in spread
+     * @return deltas is the deltas of the new options in the spread
      */
-    function commitNextOption(
-        CommitParams calldata commitParams,
+    function commitAndClose(
+        CloseParams calldata closeParams,
         Vault.VaultParams storage vaultParams,
         Vault.VaultState storage vaultState
     )
         external
         returns (
-            address otokenAddress,
-            uint256 strikePrice,
-            uint256 delta
+            address[] memory spread,
+            uint256[] memory strikePrices,
+            uint256[] memory deltas,
+            address spreadToken
         )
     {
-        uint256 expiry = getNextExpiry(commitParams.currentOption);
+        uint256 expiry = getNextExpiry(closeParams.currentSpread[0]);
 
-        IStrikeSelection selection =
-            IStrikeSelection(commitParams.strikeSelection);
+        IStrikeSelectionSpread selection =
+            IStrikeSelectionSpread(closeParams.strikeSelection);
 
         bool isPut = vaultParams.isPut;
         address underlying = vaultParams.underlying;
+        address asset = vaultParams.asset;
 
-        (strikePrice, delta) = commitParams.lastStrikeOverrideRound ==
-            vaultState.round
-            ? (commitParams.overriddenStrikePrice, selection.delta())
-            : selection.getStrikePrice(expiry, isPut);
+        (strikePrices, deltas) = selection.getStrikePrices(expiry, isPut);
 
-        require(strikePrice != 0, "!strikePrice");
+        require(strikePrices.length == deltas.length, "Invalid Data");
+        for (uint256 i = 0; i < strikePrices.length; i++) {
+            require(strikePrices[i] != 0, "!strikePrice");
+        }
+        
 
         // retrieve address if option already exists, or deploy it
-        otokenAddress = getOrDeployOtoken(
-            commitParams,
+        spread = getOrDeployOtokens(
+            closeParams,
             vaultParams,
             underlying,
-            strikePrice,
+            asset,
+            strikePrices,
             expiry,
             isPut
         );
 
-        return (otokenAddress, strikePrice, delta);
+        spreadToken = deploySpreadToken(
+            closeParams.SPREAD_TOKEN_IMPL,
+            "Call Spread Token",
+            "CST",
+            asset,
+            underlying
+        );
+
+        return (spread, strikePrices, deltas, spreadToken);
+    }
+
+    function deploySpreadToken(
+        address impl,
+        string memory name,
+        string memory symbol,
+        address asset,
+        address underlying
+    )
+        private
+        returns(address)
+    {
+
+        address instance = impl.clone();
+        ISpreadToken(instance).init(
+            name,
+            symbol,
+            asset,
+            underlying
+        );
+
+        return instance;
     }
 
     /**
@@ -125,13 +159,14 @@ library VaultLifecycleWithSwap {
 
     /**
      * @param decimals is the decimals of the asset
-     * @param totalBalance is the vault's total asset balance
+     * @param totalBalance is the vaults total balance of the asset
      * @param currentShareSupply is the supply of the shares invoked with totalSupply()
-     * @param lastQueuedWithdrawAmount is the amount queued for withdrawals from last round
+     * @param lastQueuedWithdrawAmount is the total amount queued for withdrawals
      * @param performanceFee is the perf fee percent to charge on premiums
      * @param managementFee is the management fee percent to charge on the AUM
+     * @param currentQueuedWithdrawShares is amount of queued withdrawals from the current round
      */
-    struct CloseParams {
+    struct RolloverParams {
         uint256 decimals;
         uint256 totalBalance;
         uint256 currentShareSupply;
@@ -153,9 +188,9 @@ library VaultLifecycleWithSwap {
      * @return performanceFeeInAsset is the performance fee charged by vault
      * @return totalVaultFee is the total amount of fee charged by vault
      */
-    function closeRound(
+    function rollover(
         Vault.VaultState storage vaultState,
-        CloseParams calldata params
+        RolloverParams calldata params
     )
         external
         view
@@ -178,7 +213,8 @@ library VaultLifecycleWithSwap {
             currentBalance.sub(params.lastQueuedWithdrawAmount);
 
         {
-            (performanceFeeInAsset, , totalVaultFee) = getVaultFees(
+            (performanceFeeInAsset, , totalVaultFee) = VaultLifecycleStrategy
+                .getVaultFees(
                 balanceForVaultFees,
                 vaultState.lastLockedAmount,
                 vaultState.totalPending,
@@ -231,28 +267,31 @@ library VaultLifecycleWithSwap {
      * @notice Creates the actual Opyn short position by depositing collateral and minting otokens
      * @param gammaController is the address of the opyn controller contract
      * @param marginPool is the address of the opyn margin contract which holds the collateral
-     * @param oTokenAddress is the address of the otoken to mint
+     * @param spread Spread oTokens
      * @param depositAmount is the amount of collateral to deposit
-     * @return the otoken mint amount
+     * @param spreadToken Spread Token
+     * @return mintAmount spreadToken mint amount
+     * @return collateralUsed collateral amount used to create spread
      */
-    function createShort(
+    function createSpread(
         address gammaController,
         address marginPool,
-        address oTokenAddress,
-        uint256 depositAmount
-    ) external returns (uint256) {
+        address[] calldata spread,
+        uint256 depositAmount,
+        address spreadToken
+    ) public returns (uint256 mintAmount, uint256 collateralUsed) {
         IController controller = IController(gammaController);
         uint256 newVaultID =
             (controller.getAccountVaultCounter(address(this))).add(1);
 
         // An otoken's collateralAsset is the vault's `asset`
         // So in the context of performing Opyn short operations we call them collateralAsset
-        IOtoken oToken = IOtoken(oTokenAddress);
+        // Assuming both oTokens in the spread has same collateral
+        IOtoken oToken = IOtoken(spread[0]);
         address collateralAsset = oToken.collateralAsset();
 
         uint256 collateralDecimals =
             uint256(IERC20Detailed(collateralAsset).decimals());
-        uint256 mintAmount;
 
         if (oToken.isPut()) {
             // For minting puts, there will be instances where the full depositAmount will not be used for minting.
@@ -284,49 +323,160 @@ library VaultLifecycleWithSwap {
             }
         }
 
-        // double approve to fix non-compliant ERC20s
-        IERC20 collateralToken = IERC20(collateralAsset);
-        collateralToken.safeApproveNonCompliant(marginPool, depositAmount);
+        {
+            // double approve to fix non-compliant ERC20s
+            IERC20 collateralToken = IERC20(collateralAsset);
+            collateralToken.safeApproveNonCompliant(marginPool, depositAmount);
+
+            IController.ActionArgs[] memory actions =
+                new IController.ActionArgs[](3);
+
+            actions[0] = IController.ActionArgs(
+                IController.ActionType.OpenVault,
+                address(this), // owner
+                address(this), // receiver
+                address(0), // asset, otoken
+                newVaultID, // vaultId
+                0, // amount
+                0, //index
+                "" //data
+            );
+
+            actions[1] = IController.ActionArgs(
+                IController.ActionType.DepositCollateral,
+                address(this), // owner
+                address(this), // address to transfer from
+                collateralAsset, // deposited asset
+                newVaultID, // vaultId
+                depositAmount, // amount
+                0, //index
+                "" //data
+            );
+
+            actions[2] = IController.ActionArgs(
+                IController.ActionType.MintShortOption,
+                address(this), // owner
+                address(this), // address to transfer to
+                spread[0], // short option address
+                newVaultID, // vaultId
+                mintAmount, // amount
+                0, //index
+                "" //data
+            );
+
+            controller.operate(actions);
+        
+        }
+        
+        _mintSpread(
+            gammaController,
+            spread,
+            mintAmount,
+            spreadToken
+        );
+
+        collateralUsed = _depositAndWithdrawCollateral(
+            gammaController,
+            marginPool,
+            newVaultID,
+            spread,
+            mintAmount,
+            depositAmount
+        );
+
+        return (mintAmount, collateralUsed);
+    }
+
+    function _mintSpread(
+        address gammaController,
+        address[] memory spread,
+        uint256 mintAmount,
+        address spreadToken
+    )
+        private
+    {
+        IController controller = IController(gammaController);
 
         IController.ActionArgs[] memory actions =
             new IController.ActionArgs[](3);
-
+        
         actions[0] = IController.ActionArgs(
-            IController.ActionType.OpenVault,
-            address(this), // owner
-            address(this), // receiver
-            address(0), // asset, otoken
-            newVaultID, // vaultId
-            0, // amount
-            0, //index
-            "" //data
+            IController.ActionType.DepositLongOption,
+            spreadToken, // vault owner
+            address(this), // deposit from this address
+            spread[0], // collateral otoken
+            1, // vaultId
+            mintAmount, // amount
+            0, // index
+            "" // data
         );
 
         actions[1] = IController.ActionArgs(
-            IController.ActionType.DepositCollateral,
-            address(this), // owner
-            address(this), // address to transfer from
-            collateralAsset, // deposited asset
-            newVaultID, // vaultId
-            depositAmount, // amount
-            0, //index
-            "" //data
+          IController.ActionType.MintShortOption,
+          spreadToken, // vault owner
+          address(this), // mint to this address
+          spread[1], // otoken
+          1, // vaultId
+          mintAmount, // amount
+          0, // index
+          "" // data
         );
 
-        actions[2] = IController.ActionArgs(
-            IController.ActionType.MintShortOption,
-            address(this), // owner
-            address(this), // address to transfer to
-            oTokenAddress, // option address
-            newVaultID, // vaultId
+        controller.operate(actions);
+    }
+
+    function _depositAndWithdrawCollateral(
+        address gammaController,
+        address marginPool,
+        uint256 vaultId,
+        address[] memory spread,
+        uint256 mintAmount,
+        uint256 collateralAmount
+    )
+        private
+        returns(uint256 collateralUsed)
+    {
+        IController controller = IController(gammaController);
+
+        IERC20 longOption = IERC20(spread[1]);
+        longOption.safeApproveNonCompliant(marginPool, mintAmount);
+
+        uint256 shortStrike = IOtoken(spread[0]).strikePrice();
+        uint256 longStrike = IOtoken(spread[1]).strikePrice();
+        
+        //TODO need to change this. Hard-coded decimals as of now
+        collateralUsed = ((((longStrike).sub(shortStrike)).mul(1e10)).div(longStrike)).mul(mintAmount);
+
+        uint256 collateralToBeWithdrawn = (collateralAmount.sub(collateralUsed));
+
+        IController.ActionArgs[] memory actions =
+            new IController.ActionArgs[](3);
+        
+        actions[0] = IController.ActionArgs(
+            IController.ActionType.DepositLongOption,
+            address(this), // vault owner
+            address(this), // deposit from this address
+            spread[1], // LONG otoken
+            vaultId, // vaultId
             mintAmount, // amount
-            0, //index
-            "" //data
+            0, // index
+            "" // data
+        );
+
+        actions[1] = IController.ActionArgs(
+          IController.ActionType.WithdrawCollateral,
+          address(this), // vault owner
+          address(this), // mint to this address
+          spread[1], // otoken
+          vaultId, // vaultId
+          collateralToBeWithdrawn, // amount
+          0, // index
+          "" // data
         );
 
         controller.operate(actions);
 
-        return mintAmount;
+        return collateralUsed;
     }
 
     /**
@@ -335,9 +485,10 @@ library VaultLifecycleWithSwap {
      * only have a single vault open at any given time. Since calling `_closeShort` deletes vaults by
      calling SettleVault action, this assumption should hold.
      * @param gammaController is the address of the opyn controller contract
+     * @param spreadToken Token which holds other vault of the strategy
      * @return amount of collateral redeemed from the vault
      */
-    function settleShort(address gammaController) external returns (uint256) {
+    function settleShort(address gammaController, address spreadToken) external returns (uint256) {
         IController controller = IController(gammaController);
 
         // gets the currently active vault ID
@@ -381,6 +532,8 @@ library VaultLifecycleWithSwap {
         controller.operate(actions);
 
         uint256 endCollateralBalance = collateralToken.balanceOf(address(this));
+
+        ISpreadToken(spreadToken).settleVault();
 
         return endCollateralBalance.sub(startCollateralBalance);
     }
@@ -435,15 +588,15 @@ library VaultLifecycleWithSwap {
      * It burns oTokens from the most recent vault opened by the contract. This assumes that the contract will
      * only have a single vault open at any given time.
      * @param gammaController is the address of the opyn controller contract
-     * @param currentOption is the address of the current option
+     * @param currentSpread is the address of the current option
      * @return amount of collateral redeemed by burning otokens
      */
-    function burnOtokens(address gammaController, address currentOption)
+    function burnOtokens(address gammaController, address currentSpread)
         external
         returns (uint256)
     {
         uint256 numOTokensToBurn =
-            IERC20(currentOption).balanceOf(address(this));
+            IERC20(currentSpread).balanceOf(address(this));
 
         require(numOTokensToBurn > 0, "No oTokens to burn");
 
@@ -560,33 +713,70 @@ library VaultLifecycleWithSwap {
     }
 
     /**
-     * @notice Either retrieves the option token if it already exists, or deploy it
-     * @param commitParams is the struct with details on previous option and strike selection details
+     * @notice Either retrieves the option tokens if they already exists, or deploys them
+     * @param closeParams is the struct with details on previous option and strike selection details
      * @param vaultParams is the struct with vault general data
      * @param underlying is the address of the underlying asset of the option
-     * @param strikePrice is the strike price of the option
+     * @param collateralAsset is the address of the collateral asset of the option
+     * @param strikePrices strike prices of the options to be minted
      * @param expiry is the expiry timestamp of the option
      * @param isPut is whether the option is a put
-     * @return the address of the option
+     * @return spread address of the option
      */
-    function getOrDeployOtoken(
-        CommitParams calldata commitParams,
+    function getOrDeployOtokens(
+        CloseParams calldata closeParams,
         Vault.VaultParams storage vaultParams,
         address underlying,
-        uint256 strikePrice,
+        address collateralAsset,
+        uint256[] memory strikePrices,
         uint256 expiry,
         bool isPut
-    ) internal returns (address) {
-        IOtokenFactory factory = IOtokenFactory(commitParams.OTOKEN_FACTORY);
+    ) internal returns (address[] memory) {
+        IOtokenFactory factory = IOtokenFactory(closeParams.OTOKEN_FACTORY);
+        address[] memory spread = new address[](strikePrices.length);
+
+        for (uint8 i = 0; i < strikePrices.length; i++) {
+            spread[i] = getOrDeployOToken(
+                closeParams.OTOKEN_FACTORY,
+                underlying,
+                closeParams.USDC,
+                collateralAsset,
+                strikePrices[i],
+                expiry,
+                isPut
+            );
+            verifyOtoken(
+                spread[i],
+                vaultParams,
+                collateralAsset,
+                closeParams.USDC,
+                closeParams.delay
+            );
+
+        }
+        return spread;
+    }
+
+    function getOrDeployOToken(
+        address _factory,
+        address _underlyingAsset,
+        address _strikeAsset,
+        address _collateralAsset,
+        uint256 _strikePrice,
+        uint256 _expiry,
+        bool _isPut
+
+    ) private returns (address) {
+        IOtokenFactory factory = IOtokenFactory(_factory);
 
         address otokenFromFactory =
             factory.getOtoken(
-                underlying,
-                commitParams.USDC,
-                commitParams.collateralAsset,
-                strikePrice,
-                expiry,
-                isPut
+                _underlyingAsset,
+                _strikeAsset,
+                _collateralAsset,
+                _strikePrice,
+                _expiry,
+                _isPut
             );
 
         if (otokenFromFactory != address(0)) {
@@ -595,87 +785,119 @@ library VaultLifecycleWithSwap {
 
         address otoken =
             factory.createOtoken(
-                underlying,
-                commitParams.USDC,
-                commitParams.collateralAsset,
-                strikePrice,
-                expiry,
-                isPut
+                _underlyingAsset,
+                _strikeAsset,
+                _collateralAsset,
+                _strikePrice,
+                _expiry,
+                _isPut
             );
-
-        verifyOtoken(
-            otoken,
-            vaultParams,
-            commitParams.collateralAsset,
-            commitParams.USDC,
-            commitParams.delay
-        );
 
         return otoken;
     }
 
-    /**
-     * @notice Creates an offer in the Swap Contract
-     * @param currentOtoken is the current otoken address
-     * @param currOtokenPremium is premium for each otoken
-     * @param swapContract the address of the swap contract
-     * @param vaultParams is the struct with vault general data
-     * @return optionAuctionID auction id of the newly created offer
-     */
-    function createOffer(
-        address currentOtoken,
-        uint256 currOtokenPremium,
-        address swapContract,
-        Vault.VaultParams storage vaultParams
-    ) external returns (uint256 optionAuctionID) {
-        require(
-            currOtokenPremium <= type(uint96).max,
-            "currentOtokenPremium > type(uint96) max value!"
-        );
-        require(currOtokenPremium > 0, "!currentOtokenPremium");
-
-        uint256 oTokenBalance = IERC20(currentOtoken).balanceOf(address(this));
-        require(
-            oTokenBalance <= type(uint128).max,
-            "oTokenBalance > type(uint128) max value!"
-        );
-
-        // Use safeIncrease instead of safeApproval because safeApproval is only used for initial
-        // approval and cannot be called again. Using safeIncrease allow us to call _createOffer
-        // even when we are approving the same oTokens we have used before. This might happen if
-        // we accidentally burn the oTokens before settlement.
-        uint256 allowance =
-            IERC20(currentOtoken).allowance(address(this), swapContract);
-
-        if (allowance < oTokenBalance) {
-            IERC20(currentOtoken).safeIncreaseAllowance(
-                swapContract,
-                oTokenBalance.sub(allowance)
+    function getOTokenPremium(
+        address oTokenAddress,
+        address optionsPremiumPricer,
+        uint256 premiumDiscount
+    ) external view returns (uint256) {
+        return
+            _getOTokenPremium(
+                oTokenAddress,
+                optionsPremiumPricer,
+                premiumDiscount
             );
-        }
+    }
 
-        uint256 decimals = vaultParams.decimals;
+    function _getOTokenPremium(
+        address oTokenAddress,
+        address optionsPremiumPricer,
+        uint256 premiumDiscount
+    ) internal view returns (uint256) {
+        IOtoken newOToken = IOtoken(oTokenAddress);
+        IOptionsPremiumPricer premiumPricer =
+            IOptionsPremiumPricer(optionsPremiumPricer);
 
-        // If total size is larger than 1, set minimum bid as 1
-        // Otherwise, set minimum bid to one tenth the total size
-        uint256 minBidSize =
-            oTokenBalance > 10**decimals ? 10**decimals : oTokenBalance.div(10);
+        // Apply black-scholes formula (from rvol library) to option given its features
+        // and get price for 100 contracts denominated in the underlying asset for call option
+        // and USDC for put option
+        uint256 optionPremium =
+            premiumPricer.getPremium(
+                newOToken.strikePrice(),
+                newOToken.expiryTimestamp(),
+                newOToken.isPut()
+            );
 
-        require(
-            minBidSize <= type(uint96).max,
-            "minBidSize > type(uint96) max value!"
+        // Apply a discount to incentivize arbitraguers
+        optionPremium = optionPremium.mul(premiumDiscount).div(
+            100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER
         );
 
-        currOtokenPremium = decimals > 18
-            ? currOtokenPremium.mul(10**(decimals.sub(18)))
-            : currOtokenPremium.div(10**(uint256(18).sub(decimals)));
+        require(
+            optionPremium <= type(uint96).max,
+            "optionPremium > type(uint96) max value!"
+        );
+        require(optionPremium > 0, "!optionPremium");
 
-        optionAuctionID = ISwap(swapContract).createOffer(
-            currentOtoken,
-            vaultParams.asset,
-            uint96(currOtokenPremium),
-            uint96(minBidSize),
-            uint128(oTokenBalance)
+        return optionPremium;
+    }
+
+    /**
+     * @notice Starts the gnosis auction
+     * @param auctionDetails is the struct with all the custom parameters of the auction
+     * @return the auction id of the newly created auction
+     */
+    function startAuction(GnosisAuction.AuctionDetails calldata auctionDetails)
+        external
+        returns (uint256)
+    {
+        return GnosisAuction.startAuction(auctionDetails);
+    }
+
+    /**
+     * @notice Settles the gnosis auction
+     * @param gnosisEasyAuction is the contract address of Gnosis easy auction protocol
+     * @param auctionID is the auction ID of the gnosis easy auction
+     */
+    function settleAuction(address gnosisEasyAuction, uint256 auctionID)
+        internal
+    {
+        IGnosisAuction(gnosisEasyAuction).settleAuction(auctionID);
+    }
+
+    /**
+     * @notice Places a bid in an auction
+     * @param bidDetails is the struct with all the details of the
+      bid including the auction's id and how much to bid
+     */
+    function placeBid(GnosisAuction.BidDetails calldata bidDetails)
+        external
+        returns (
+            uint256 sellAmount,
+            uint256 buyAmount,
+            uint64 userId
+        )
+    {
+        return GnosisAuction.placeBid(bidDetails);
+    }
+
+    /**
+     * @notice Claims the oTokens belonging to the vault
+     * @param auctionSellOrder is the sell order of the bid
+     * @param gnosisEasyAuction is the address of the gnosis auction contract
+     holding custody to the funds
+     * @param counterpartyThetaVault is the address of the counterparty theta
+     vault of this delta vault
+     */
+    function claimAuctionOtokens(
+        Vault.AuctionSellOrder calldata auctionSellOrder,
+        address gnosisEasyAuction,
+        address counterpartyThetaVault
+    ) external {
+        GnosisAuction.claimAuctionOtokens(
+            auctionSellOrder,
+            gnosisEasyAuction,
+            counterpartyThetaVault
         );
     }
 
@@ -718,16 +940,16 @@ library VaultLifecycleWithSwap {
      * @notice Sell the allocated options to the purchase queue post auction settlement
      * @dev Reverts if the auction hasn't settled yet
      * @param optionsPurchaseQueue is the OptionsPurchaseQueue contract
-     * @param swapContract The address of the swap settlement contract
+     * @param gnosisEasyAuction The address of the Gnosis Easy Auction contract
      * @return totalPremiums Total premiums earnt by the vault
      */
     function sellOptionsToQueue(
         address optionsPurchaseQueue,
-        address swapContract,
+        address gnosisEasyAuction,
         uint256 optionAuctionID
     ) external returns (uint256) {
         uint256 settlementPrice =
-            getAuctionSettlementPrice(swapContract, optionAuctionID);
+            getAuctionSettlementPrice(gnosisEasyAuction, optionAuctionID);
         require(settlementPrice != 0, "!settlementPrice");
 
         return
@@ -738,15 +960,33 @@ library VaultLifecycleWithSwap {
 
     /**
      * @notice Gets the settlement price of a settled auction
-     * @param swapContract The address of the swap settlement contract
-     * @param optionAuctionID is the offer ID
+     * @param gnosisEasyAuction The address of the Gnosis Easy Auction contract
      * @return settlementPrice Auction settlement price
      */
     function getAuctionSettlementPrice(
-        address swapContract,
+        address gnosisEasyAuction,
         uint256 optionAuctionID
     ) public view returns (uint256) {
-        return ISwap(swapContract).averagePriceForOffer(optionAuctionID);
+        bytes32 clearingPriceOrder =
+            IGnosisAuction(gnosisEasyAuction)
+                .auctionData(optionAuctionID)
+                .clearingPriceOrder;
+
+        if (clearingPriceOrder == bytes32(0)) {
+            // Current auction hasn't settled yet
+            return 0;
+        } else {
+            // We decode the clearingPriceOrder to find the auction settlement price
+            // settlementPrice = clearingPriceOrder.sellAmount / clearingPriceOrder.buyAmount
+            return
+                (10**Vault.OTOKEN_DECIMALS)
+                    .mul(
+                    uint96(uint256(clearingPriceOrder)) // sellAmount
+                )
+                    .div(
+                    uint96(uint256(clearingPriceOrder) >> 96) // buyAmount
+                );
+        }
     }
 
     /**
@@ -794,18 +1034,18 @@ library VaultLifecycleWithSwap {
 
     /**
      * @notice Gets the next option expiry timestamp
-     * @param currentOption is the otoken address that the vault is currently writing
+     * @param currentSpread is the otoken address that the vault is currently writing
      */
-    function getNextExpiry(address currentOption)
+    function getNextExpiry(address currentSpread)
         internal
         view
         returns (uint256)
     {
         // uninitialized state
-        if (currentOption == address(0)) {
+        if (currentSpread == address(0)) {
             return getNextFriday(block.timestamp);
         }
-        uint256 currentExpiry = IOtoken(currentOption).expiryTimestamp();
+        uint256 currentExpiry = IOtoken(currentSpread).expiryTimestamp();
 
         // After options expiry if no options are written for >1 week
         // We need to give the ability continue writing options
