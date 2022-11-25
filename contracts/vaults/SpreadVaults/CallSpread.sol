@@ -12,7 +12,7 @@ import {
     HimalayanCallSpreadStorage
 } from "../../storage/HimalayanCallSpreadStorage.sol";
 import {Vault} from "../../libraries/Vault.sol";
-import {VaultLifecycleStrategy} from "../../libraries/VaultLifecycleStrategy.sol";
+import {VaultLifecycleSpread} from "../../libraries/VaultLifecycleSpread.sol";
 import {ShareMath} from "../../libraries/ShareMath.sol";
 import {HimalayanVault} from "./base/HimalayanVault.sol";
 import {IOtoken} from "../../interfaces/GammaInterface.sol";
@@ -331,8 +331,8 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         address[] memory oldSpread = spreadState.currentSpread;
         address oldSpreadToken = spreadState.currentSpreadToken;
 
-        VaultLifecycleStrategy.CloseParams memory closeParams =
-            VaultLifecycleStrategy.CloseParams({
+        VaultLifecycleSpread.CloseParams memory closeParams =
+            VaultLifecycleSpread.CloseParams({
                 OTOKEN_FACTORY: OTOKEN_FACTORY,
                 USDC: USDC,
                 currentSpread: oldSpread,
@@ -348,7 +348,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
             uint256[]  memory strikePrices,
             uint256[] memory deltas,
             address spreadToken
-        ) = VaultLifecycleStrategy.commitAndClose(closeParams, vaultParams, vaultState);
+        ) = VaultLifecycleSpread.commitAndClose(closeParams, vaultParams, vaultState);
 
         emit NewSpreadStrikesSelected(strikePrices, deltas);
         
@@ -384,7 +384,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
 
         if (oldSpread[0] != address(0)) {
             uint256 withdrawAmount =
-                VaultLifecycleStrategy.settleShort(GAMMA_CONTROLLER, oldSpreadToken);
+                VaultLifecycleSpread.settleShort(GAMMA_CONTROLLER, oldSpreadToken);
             emit CloseShort(oldSpread, withdrawAmount, msg.sender);
         }
     }
@@ -434,7 +434,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
 
         while (index > 0 && lockedBalance > vaultState.lockedAmountUsed) {
             (uint256 optionsMintAmount, uint256 collateralUsed) =
-                VaultLifecycleStrategy.createSpread(
+                VaultLifecycleSpread.createSpread(
                     GAMMA_CONTROLLER,
                     MARGIN_POOL,
                     newSpread,
@@ -451,11 +451,11 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
 
         ISpreadToken(spreadToken).mint(totalMinted);
 
-        VaultLifecycleStrategy.allocateOptions(
+        VaultLifecycleSpread.allocateOptions(
             optionsPurchaseQueue,
             spreadToken,
             totalMinted,
-            VaultLifecycleStrategy.QUEUE_OPTION_ALLOCATION
+            VaultLifecycleSpread.QUEUE_OPTION_ALLOCATION
         );
         //_startAuction();
     }
@@ -479,14 +479,14 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         auctionDetails.premium = currentOtokenPremium;
         auctionDetails.duration = auctionDuration;
 
-        optionAuctionID = VaultLifecycleStrategy.startAuction(auctionDetails);
+        optionAuctionID = VaultLifecycleSpread.startAuction(auctionDetails);
     }
 
     /**
      * @notice Sell the allocated options to the purchase queue post auction settlement
      */
     function sellOptionsToQueue() external onlyKeeper nonReentrant {
-        VaultLifecycleStrategy.sellOptionsToQueue(
+        VaultLifecycleSpread.sellOptionsToQueue(
             optionsPurchaseQueue,
             GNOSIS_EASY_AUCTION,
             optionAuctionID
@@ -498,7 +498,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
      */
     /**function burnRemainingOTokens() external onlyKeeper nonReentrant {
         uint256 unlockedAssetAmount =
-            VaultLifecycleStrategy.burnOtokens(
+            VaultLifecycleSpread.burnOtokens(
                 GAMMA_CONTROLLER,
                 spreadState.currentSpread
             );

@@ -17,7 +17,7 @@ import {
 } from "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 import {Vault} from "../../../libraries/Vault.sol";
-import {VaultLifecycleStrategy} from "../../../libraries/VaultLifecycleStrategy.sol";
+import {VaultLifecycleSpread} from "../../../libraries/VaultLifecycleSpread.sol";
 import {ShareMath} from "../../../libraries/ShareMath.sol";
 import {IWETH} from "../../../interfaces/IWETH.sol";
 
@@ -189,7 +189,7 @@ contract HimalayanVault is
         string memory _tokenSymbol,
         Vault.VaultParams calldata _vaultParams
     ) internal initializer {
-        VaultLifecycleStrategy.verifyInitializerParams(
+        VaultLifecycleSpread.verifyInitializerParams(
             _owner,
             _keeper,
             _feeRecipient,
@@ -604,9 +604,9 @@ contract HimalayanVault is
                 mintShares,
                 performanceFeeInAsset,
                 totalVaultFee
-            ) = VaultLifecycleStrategy.rollover(
+            ) = VaultLifecycleSpread.rollover(
                 vaultState,
-                VaultLifecycleStrategy.RolloverParams(
+                VaultLifecycleSpread.RolloverParams(
                     vaultParams.decimals,
                     IERC20(vaultParams.asset).balanceOf(address(this)),
                     totalSupply(),

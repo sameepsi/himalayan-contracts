@@ -20,7 +20,7 @@ import {IOptionsPurchaseQueue} from "../interfaces/IOptionsPurchaseQueue.sol";
 import {SupportsNonCompliantERC20} from "./SupportsNonCompliantERC20.sol";
 import {IOptionsPremiumPricer} from "../interfaces/IHimalayan.sol";
 
-library VaultLifecycleStrategy {
+library VaultLifecycleSpread {
     using SafeMath for uint256;
     using SupportsNonCompliantERC20 for IERC20;
     using Clones for address;
@@ -213,7 +213,7 @@ library VaultLifecycleStrategy {
             currentBalance.sub(params.lastQueuedWithdrawAmount);
 
         {
-            (performanceFeeInAsset, , totalVaultFee) = VaultLifecycleStrategy
+            (performanceFeeInAsset, , totalVaultFee) = VaultLifecycleSpread
                 .getVaultFees(
                 balanceForVaultFees,
                 vaultState.lastLockedAmount,
