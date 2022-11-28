@@ -3,6 +3,7 @@ pragma solidity =0.8.17;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {Vault} from "./Vault.sol";
 import {ShareMath} from "./ShareMath.sol";
 import {IStrikeSelectionSpread, ISpreadToken} from "../interfaces/IHimalayan.sol";
@@ -11,6 +12,7 @@ import {
     IOtokenFactory,
     IOtoken,
     IController,
+    IMarginCalculator,
     GammaTypes
 } from "../interfaces/GammaInterface.sol";
 import {IERC20Detailed} from "../interfaces/IERC20Detailed.sol";
@@ -20,6 +22,7 @@ import {IOptionsPremiumPricer} from "../interfaces/IHimalayan.sol";
 
 library VaultLifecycleSpread {
     using SupportsNonCompliantERC20 for IERC20;
+    using Address for address;
     using Clones for address;
 
     struct CloseParams {
@@ -28,7 +31,6 @@ library VaultLifecycleSpread {
         address[] currentSpread;
         uint256 delay;
         address strikeSelection;
-        address optionsPremiumPricer;
         uint256 premiumDiscount;
         address SPREAD_TOKEN_IMPL;
     }
@@ -58,7 +60,7 @@ library VaultLifecycleSpread {
             address spreadToken
         )
     {
-        uint256 expiry = getNextExpiry(closeParams.currentSpread[0]);
+        uint256 expiry = getNextExpiry(closeParams.currentSpread.length > 0 ? closeParams.currentSpread[0]:address(0));
 
         IStrikeSelectionSpread selection =
             IStrikeSelectionSpread(closeParams.strikeSelection);
@@ -280,41 +282,43 @@ library VaultLifecycleSpread {
         uint256 newVaultID =
             (controller.getAccountVaultCounter(address(this))) + 1;
 
+        
         // An otoken's collateralAsset is the vault's `asset`
         // So in the context of performing Opyn short operations we call them collateralAsset
         // Assuming both oTokens in the spread has same collateral
         IOtoken oToken = IOtoken(spread[0]);
         address collateralAsset = oToken.collateralAsset();
-
-        uint256 collateralDecimals =
+        {
+            uint256 collateralDecimals =
             uint256(IERC20Detailed(collateralAsset).decimals());
 
-        if (oToken.isPut()) {
-            // For minting puts, there will be instances where the full depositAmount will not be used for minting.
-            // This is because of an issue with precision.
-            //
-            // For ETH put options, we are calculating the mintAmount (10**8 decimals) using
-            // the depositAmount (10**18 decimals), which will result in truncation of decimals when scaling down.
-            // As a result, there will be tiny amounts of dust left behind in the Opyn vault when minting put otokens.
-            //
-            // For simplicity's sake, we do not refund the dust back to the address(this) on minting otokens.
-            // We retain the dust in the vault so the calling contract can withdraw the
-            // actual locked amount + dust at settlement.
-            //
-            // To test this behavior, we can console.log
-            // MarginCalculatorInterface(0x7A48d10f372b3D7c60f6c9770B91398e4ccfd3C7).getExcessCollateral(vault)
-            // to see how much dust (or excess collateral) is left behind.
-            mintAmount = depositAmount
-                * (10**Vault.OTOKEN_DECIMALS)
-                * (10**18) // we use 10**18 to give extra precision
-                / (oToken.strikePrice() * (10**(10 + collateralDecimals)));
-        } else {
-            mintAmount = depositAmount;
+            if (oToken.isPut()) {
+                // For minting puts, there will be instances where the full depositAmount will not be used for minting.
+                // This is because of an issue with precision.
+                //
+                // For ETH put options, we are calculating the mintAmount (10**8 decimals) using
+                // the depositAmount (10**18 decimals), which will result in truncation of decimals when scaling down.
+                // As a result, there will be tiny amounts of dust left behind in the Opyn vault when minting put otokens.
+                //
+                // For simplicity's sake, we do not refund the dust back to the address(this) on minting otokens.
+                // We retain the dust in the vault so the calling contract can withdraw the
+                // actual locked amount + dust at settlement.
+                //
+                // To test this behavior, we can console.log
+                // MarginCalculatorInterface(0x7A48d10f372b3D7c60f6c9770B91398e4ccfd3C7).getExcessCollateral(vault)
+                // to see how much dust (or excess collateral) is left behind.
+                mintAmount = depositAmount
+                    * (10**Vault.OTOKEN_DECIMALS)
+                    * (10**18) // we use 10**18 to give extra precision
+                    / (oToken.strikePrice() * (10**(10 + collateralDecimals)));
+            } else {
+                mintAmount = depositAmount;
 
-            if (collateralDecimals > 8) {
-                uint256 scaleBy = 10**(collateralDecimals - 8); // oTokens have 8 decimals
-                if (mintAmount > scaleBy) {
-                    mintAmount = depositAmount / (scaleBy); // scale down from 10**18 to 10**8
+                if (collateralDecimals > 8) {
+                    uint256 scaleBy = 10**(collateralDecimals - 8); // oTokens have 8 decimals
+                    if (mintAmount > scaleBy) {
+                        mintAmount = depositAmount / (scaleBy); // scale down from 10**18 to 10**8
+                    }
                 }
             }
         }
@@ -366,6 +370,7 @@ library VaultLifecycleSpread {
         
         _mintSpread(
             gammaController,
+            marginPool,
             spread,
             mintAmount,
             spreadToken
@@ -374,10 +379,11 @@ library VaultLifecycleSpread {
         collateralUsed = _depositAndWithdrawCollateral(
             gammaController,
             marginPool,
+            collateralAsset,
+            depositAmount,
             newVaultID,
             spread,
-            mintAmount,
-            depositAmount
+            mintAmount
         );
 
         return (mintAmount, collateralUsed);
@@ -385,6 +391,7 @@ library VaultLifecycleSpread {
 
     function _mintSpread(
         address gammaController,
+        address marginPool,
         address[] memory spread,
         uint256 mintAmount,
         address spreadToken
@@ -392,9 +399,11 @@ library VaultLifecycleSpread {
         private
     {
         IController controller = IController(gammaController);
+        IERC20 shortOption= IERC20(spread[0]);
+        shortOption.safeApproveNonCompliant(marginPool, mintAmount);
 
         IController.ActionArgs[] memory actions =
-            new IController.ActionArgs[](3);
+            new IController.ActionArgs[](2);
         
         actions[0] = IController.ActionArgs(
             IController.ActionType.DepositLongOption,
@@ -424,29 +433,23 @@ library VaultLifecycleSpread {
     function _depositAndWithdrawCollateral(
         address gammaController,
         address marginPool,
+        address collateralAsset,
+        uint256 collateralDeposited,
         uint256 vaultId,
         address[] memory spread,
-        uint256 mintAmount,
-        uint256 collateralAmount
+        uint256 mintAmount
     )
         private
         returns(uint256 collateralUsed)
     {
         IController controller = IController(gammaController);
+        IMarginCalculator calculator = IMarginCalculator(controller.calculator());
 
         IERC20 longOption = IERC20(spread[1]);
         longOption.safeApproveNonCompliant(marginPool, mintAmount);
 
-        uint256 shortStrike = IOtoken(spread[0]).strikePrice();
-        uint256 longStrike = IOtoken(spread[1]).strikePrice();
-        
-        //TODO need to change this. Hard-coded decimals as of now
-        collateralUsed = (((longStrike - shortStrike) * (1e10)) / longStrike) * (mintAmount);
-
-        uint256 collateralToBeWithdrawn = (collateralAmount - collateralUsed);
-
         IController.ActionArgs[] memory actions =
-            new IController.ActionArgs[](3);
+            new IController.ActionArgs[](1);
         
         actions[0] = IController.ActionArgs(
             IController.ActionType.DepositLongOption,
@@ -459,20 +462,25 @@ library VaultLifecycleSpread {
             "" // data
         );
 
-        actions[1] = IController.ActionArgs(
+        controller.operate(actions);
+
+        (GammaTypes.MarginVault memory vault, uint256 typeVault, ) = controller.getVaultWithDetails(address(this), vaultId);
+        (uint256 excessCollateral, bool isValidVault) = calculator.getExcessCollateral(vault, typeVault);
+
+        actions[0] = IController.ActionArgs(
           IController.ActionType.WithdrawCollateral,
           address(this), // vault owner
           address(this), // mint to this address
-          spread[1], // otoken
+          collateralAsset, // otoken
           vaultId, // vaultId
-          collateralToBeWithdrawn, // amount
+          excessCollateral, // amount
           0, // index
           "" // data
         );
 
         controller.operate(actions);
 
-        return collateralUsed;
+        return (collateralDeposited - excessCollateral);
     }
 
     /**
@@ -790,52 +798,6 @@ library VaultLifecycleSpread {
             );
 
         return otoken;
-    }
-
-    function getOTokenPremium(
-        address oTokenAddress,
-        address optionsPremiumPricer,
-        uint256 premiumDiscount
-    ) external view returns (uint256) {
-        return
-            _getOTokenPremium(
-                oTokenAddress,
-                optionsPremiumPricer,
-                premiumDiscount
-            );
-    }
-
-    function _getOTokenPremium(
-        address oTokenAddress,
-        address optionsPremiumPricer,
-        uint256 premiumDiscount
-    ) internal view returns (uint256) {
-        IOtoken newOToken = IOtoken(oTokenAddress);
-        IOptionsPremiumPricer premiumPricer =
-            IOptionsPremiumPricer(optionsPremiumPricer);
-
-        // Apply black-scholes formula (from rvol library) to option given its features
-        // and get price for 100 contracts denominated in the underlying asset for call option
-        // and USDC for put option
-        uint256 optionPremium =
-            premiumPricer.getPremium(
-                newOToken.strikePrice(),
-                newOToken.expiryTimestamp(),
-                newOToken.isPut()
-            );
-
-        // Apply a discount to incentivize arbitraguers
-        optionPremium = optionPremium * (premiumDiscount) / (
-            100 * Vault.PREMIUM_DISCOUNT_MULTIPLIER
-        );
-
-        require(
-            optionPremium <= type(uint96).max,
-            "optionPremium > type(uint96) max value!"
-        );
-        require(optionPremium > 0, "!optionPremium");
-
-        return optionPremium;
     }
 
     /**

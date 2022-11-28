@@ -20,6 +20,40 @@ library GammaTypes {
         // quantity of ERC-20 deposited as collateral in the vault for each ERC-20 address in collateralAssets
         uint256[] collateralAmounts;
     }
+
+    // vault is a struct of 6 arrays that describe a position a user has, a user can have multiple vaults.
+    struct MarginVault {
+        // addresses of oTokens a user has shorted (i.e. written) against this vault
+        address[] shortOtokens;
+        // addresses of oTokens a user has bought and deposited in this vault
+        // user can be long oTokens without opening a vault (e.g. by buying on a DEX)
+        // generally, long oTokens will be 'deposited' in vaults to act as collateral in order to write oTokens against (i.e. in spreads)
+        address[] longOtokens;
+        // addresses of other ERC-20s a user has deposited as collateral in this vault
+        address[] collateralAssets;
+        // quantity of oTokens minted/written for each oToken address in shortOtokens
+        uint256[] shortAmounts;
+        // quantity of oTokens owned and held in the vault for each oToken address in longOtokens
+        uint256[] longAmounts;
+        // quantity of ERC-20 deposited as collateral in the vault for each ERC-20 address in collateralAssets
+        uint256[] collateralAmounts;
+    }
+}
+
+interface IMarginCalculator {
+    /**
+     * @notice returns the amount of collateral that can be removed from an actual or a theoretical vault
+     * @dev return amount is denominated in the collateral asset for the oToken in the vault, or the collateral asset in the vault
+     * @param _vault theoretical vault that needs to be checked
+     * @param _vaultType vault type (0 for spread/max loss, 1 for naked margin)
+     * @return excessCollateral the amount by which the margin is above or below the required amount
+     * @return isExcess True if there is excess margin in the vault, False if there is a deficit of margin in the vault
+     * if True, collateral can be taken out from the vault, if False, additional collateral needs to be added to vault
+     */
+    function getExcessCollateral(GammaTypes.MarginVault memory _vault, uint256 _vaultType)
+        external
+        view
+        returns (uint256, bool);
 }
 
 interface IOtoken {
@@ -136,6 +170,8 @@ interface IController {
 
     function oracle() external view returns (address);
 
+    function calculator() external view returns(address);
+
     function getVault(address _owner, uint256 _vaultId)
         external
         view
@@ -152,6 +188,17 @@ interface IController {
         address _collateral,
         uint256 _expiry
     ) external view returns (bool);
+
+    function getVaultWithDetails(address _owner, uint256 _vaultId)
+        external
+        view
+        returns (
+            GammaTypes.MarginVault memory,
+            uint256,
+            uint256
+        );
+
+    function setOperator(address _operator, bool _isOperator) external;
 }
 
 interface IOracle {

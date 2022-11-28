@@ -61,6 +61,8 @@ contract SpreadToken is SpreadBaseToken {
         IController controller = IController(GAMMA_CONTROLLER);
 
         controller.operate(actions);
+
+        controller.setOperator(himalayanVault, true);
     }
 
     function mint(uint256 amount) external {

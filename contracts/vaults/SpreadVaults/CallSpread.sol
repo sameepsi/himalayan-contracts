@@ -53,7 +53,11 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         address indexed manager
     );
 
-    event NewSpreadStrikesSelected(uint256[] strikePrices, uint256[] deltas);
+    event NewSpreadStrikesSelected(
+        uint256[] strikePrices,
+        uint256[] deltas,
+        address spreadToken
+    );
 
     event PremiumDiscountSet(
         uint256 premiumDiscount,
@@ -90,8 +94,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
      * @param _performanceFee is the perfomance fee pct.
      * @param _tokenName is the name of the token
      * @param _tokenSymbol is the symbol of the token
-     * @param _optionsPremiumPricer is the address of the contract with the
-       black-scholes premium calculation logic
      * @param _strikeSelection is the address of the contract with strike selection logic
      * @param _premiumDiscount is the vault's discount applied to the premium
      * @param _auctionDuration is the duration of the gnosis auction
@@ -104,7 +106,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         uint256 _performanceFee;
         string _tokenName;
         string _tokenSymbol;
-        address _optionsPremiumPricer;
         address _strikeSelection;
         uint32 _premiumDiscount;
         uint256 _auctionDuration;
@@ -166,10 +167,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
             _vaultParams
         );
         require(
-            _initParams._optionsPremiumPricer != address(0),
-            "!_optionsPremiumPricer"
-        );
-        require(
             _initParams._strikeSelection != address(0),
             "!_strikeSelection"
         );
@@ -183,7 +180,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
             _initParams._auctionDuration >= MIN_AUCTION_DURATION,
             "!_auctionDuration"
         );
-        optionsPremiumPricer = _initParams._optionsPremiumPricer;
         strikeSelection = _initParams._strikeSelection;
         premiumDiscount = _initParams._premiumDiscount;
         auctionDuration = _initParams._auctionDuration;
@@ -234,21 +230,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
     function setStrikeSelection(address newStrikeSelection) external onlyOwner {
         require(newStrikeSelection != address(0), "!newStrikeSelection");
         strikeSelection = newStrikeSelection;
-    }
-
-    /**
-     * @notice Sets the new options premium pricer contract
-     * @param newOptionsPremiumPricer is the address of the new options perimum pricer contract
-     */
-    function setOptionsPremiumPricer(address newOptionsPremiumPricer)
-        external
-        onlyOwner
-    {
-        require(
-            newOptionsPremiumPricer != address(0),
-            "!newOptionsPremiumPricer"
-        );
-        optionsPremiumPricer = newOptionsPremiumPricer;
     }
 
     /**
@@ -324,9 +305,8 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
                 currentSpread: oldSpread,
                 delay: DELAY,
                 strikeSelection: strikeSelection,
-                optionsPremiumPricer: optionsPremiumPricer,
                 premiumDiscount: premiumDiscount,
-                SPREAD_TOKEN_IMPL: oldSpreadToken
+                SPREAD_TOKEN_IMPL: SPREAD_TOKEN
             });
 
         (
@@ -336,7 +316,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
             address spreadToken
         ) = VaultLifecycleSpread.commitAndClose(closeParams, vaultParams, vaultState);
 
-        emit NewSpreadStrikesSelected(strikePrices, deltas);
+        emit NewSpreadStrikesSelected(strikePrices, deltas, spreadToken);
         
         require(
             IOtoken(spread[0]).strikePrice() < IOtoken(spread[1]).strikePrice(),
@@ -361,14 +341,14 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
      */
     function _closeSpread(address[] memory oldSpread, address oldSpreadToken) private {
         uint256 lockedAmount = vaultState.lockedAmount;
-        if (oldSpread[0] != address(0)) {
+        if (oldSpread.length > 0 && oldSpread[0] != address(0)) {
             vaultState.lastLockedAmount = uint104(lockedAmount);
         }
         vaultState.lockedAmount = 0;
 
         delete spreadState.currentSpread;
 
-        if (oldSpread[0] != address(0)) {
+        if (oldSpread.length > 0 && oldSpread[0] != address(0)) {
             uint256 withdrawAmount =
                 VaultLifecycleSpread.settleShort(GAMMA_CONTROLLER, oldSpreadToken);
             emit CloseShort(oldSpread, withdrawAmount, msg.sender);
@@ -416,7 +396,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         
         lockedBalance = lockedBalance - lockedAmountUsed;
 
-        while (index > 0 && lockedBalance > vaultState.lockedAmountUsed) {
+        while (index > 0 && lockedBalance > 0) {
             (uint256 optionsMintAmount, uint256 collateralUsed) =
                 VaultLifecycleSpread.createSpread(
                     GAMMA_CONTROLLER,

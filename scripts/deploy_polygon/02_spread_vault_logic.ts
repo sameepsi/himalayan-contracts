@@ -16,7 +16,7 @@ const main = async ({
 }: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
-  console.log(`01 - Deploying Theta Vault logic on ${network.name}`);
+  console.log(`01 - Deploying Call Spread Vault logic on ${network.name}`);
 
   const chainId = network.config.chainId;
 
@@ -27,7 +27,6 @@ const main = async ({
   console.log(`VaultLifecycleSpread @ ${lifecycle.address}`);
 
   const spreadTokenLogic = await deployments.get("SpreadTokenLogic");
-  console.log(spreadTokenLogic.address);
   const vault = await deploy("CallSpreadLogic", {
     contract: "CallSpread",
     from: deployer,
@@ -47,18 +46,25 @@ const main = async ({
   console.log(`CallSpreadLogic @ ${vault.address}`);
 
   try {
-    await run("verify:verify", {
-      address: vault.address,
-      constructorArguments: [
-        WETH_ADDRESS[chainId],
-        USDC_ADDRESS[chainId],
-        OTOKEN_FACTORY[chainId],
-        GAMMA_CONTROLLER[chainId],
-        MARGIN_POOL[chainId],
-        GNOSIS_EASY_AUCTION[chainId],
-        spreadTokenLogic.address,
-      ],
-    });
+    if (!vault.newlyDeployed) {
+      await run("verify:verify", {
+        address: lifecycle.address,
+        constructorArguments: [],
+      });
+      await run("verify:verify", {
+        address: vault.address,
+        constructorArguments: [
+          WETH_ADDRESS[chainId],
+          USDC_ADDRESS[chainId],
+          OTOKEN_FACTORY[chainId],
+          GAMMA_CONTROLLER[chainId],
+          MARGIN_POOL[chainId],
+          GNOSIS_EASY_AUCTION[chainId],
+          spreadTokenLogic.address,
+        ],
+      });
+      
+    }
   } catch (error) {
     console.log(error);
   }

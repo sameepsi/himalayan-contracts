@@ -70,7 +70,7 @@ library Vault {
         // Amount that was locked for selling options in the previous round
         // used for calculating performance fee deduction
         uint104 lastLockedAmount;
-        // Amount used as collateral so far out of locked amount. Used in spread vaults
+        // Locked amount which is unsed so far
         uint104 lockedAmountUsed;
         // 32 byte slot 2
         // Stores the total tally of how much of `asset` there is
