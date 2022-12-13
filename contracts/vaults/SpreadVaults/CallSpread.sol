@@ -41,16 +41,18 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
      *  EVENTS
      ***********************************************/
 
-    event OpenShort(
+    event OpenSpread(
         address[] spread,
         uint256 depositAmount,
-        address indexed manager
+        address indexed manager,
+        address indexed spreadToken
     );
 
-    event CloseShort(
-        address[] options,
+    event CloseSpread(
+        address[] spread,
         uint256 withdrawAmount,
-        address indexed manager
+        address indexed manager,
+        address indexed spreadToken
     );
 
     event NewSpreadStrikesSelected(
@@ -351,7 +353,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         if (oldSpread.length > 0 && oldSpread[0] != address(0)) {
             uint256 withdrawAmount =
                 VaultLifecycleSpread.settleShort(GAMMA_CONTROLLER, oldSpreadToken);
-            emit CloseShort(oldSpread, withdrawAmount, msg.sender);
+            emit CloseSpread(oldSpread, withdrawAmount, msg.sender, oldSpreadToken);
         }
     }
 
@@ -391,7 +393,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
             ShareMath.assertUint104(lockedBalance);
             vaultState.lockedAmount = uint104(lockedBalance);
 
-            emit OpenShort(newSpread, lockedBalance, msg.sender);
+            emit OpenSpread(newSpread, lockedBalance, msg.sender, spreadToken);
         }
         
         lockedBalance = lockedBalance - lockedAmountUsed;
