@@ -88,9 +88,9 @@ library GnosisAuction {
 
         auctionID = IGnosisAuction(auctionDetails.gnosisEasyAuction)
             .initiateAuction(
-            // address of oToken we minted and are selling
+            // address of token we minted and are selling
             auctionDetails.tokenAddress,
-            // address of asset we want in exchange for oTokens. Should match vault `asset`
+            // address of asset we want in exchange for sell token. Should match vault `asset`
             auctionDetails.asset,
             // orders can be cancelled at any time during the auction
             auctionEnd,

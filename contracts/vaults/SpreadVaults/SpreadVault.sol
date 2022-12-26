@@ -23,7 +23,7 @@ import {ISpreadToken} from "../../interfaces/IHimalayan.sol";
  * Any changes/appends in storage variable needs to happen in HimalayanCallSpreadStorage.
  * CallSpread should not inherit from any other contract aside from HimalayanVault, HimalayanCallSpreadStorage
  */
-contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
+contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
     using SafeERC20 for IERC20;
     using ShareMath for Vault.DepositReceipt;
 
@@ -77,13 +77,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         uint256 round
     );
 
-    event InitiateGnosisAuction(
-        address indexed auctioningToken,
-        address indexed biddingToken,
-        uint256 auctionCounter,
-        address indexed manager
-    );
-
     /************************************************
      *  STRUCTS
      ***********************************************/
@@ -96,6 +89,8 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
      * @param _performanceFee is the perfomance fee pct.
      * @param _tokenName is the name of the token
      * @param _tokenSymbol is the symbol of the token
+     * @param _optionsPremiumPricer is the address of the contract with the
+       black-scholes premium calculation logic
      * @param _strikeSelection is the address of the contract with strike selection logic
      * @param _premiumDiscount is the vault's discount applied to the premium
      * @param _auctionDuration is the duration of the gnosis auction
@@ -108,6 +103,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         uint256 _performanceFee;
         string _tokenName;
         string _tokenSymbol;
+        address _optionsPremiumPricer;
         address _strikeSelection;
         uint32 _premiumDiscount;
         uint256 _auctionDuration;
@@ -169,6 +165,10 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
             _vaultParams
         );
         require(
+            _initParams._optionsPremiumPricer != address(0),
+            "!_optionsPremiumPricer"
+        );
+        require(
             _initParams._strikeSelection != address(0),
             "!_strikeSelection"
         );
@@ -182,6 +182,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
             _initParams._auctionDuration >= MIN_AUCTION_DURATION,
             "!_auctionDuration"
         );
+        optionsPremiumPricer = _initParams._optionsPremiumPricer;
         strikeSelection = _initParams._strikeSelection;
         premiumDiscount = _initParams._premiumDiscount;
         auctionDuration = _initParams._auctionDuration;
@@ -208,6 +209,21 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         emit PremiumDiscountSet(premiumDiscount, newPremiumDiscount);
 
         premiumDiscount = newPremiumDiscount;
+    }
+
+    /**
+     * @notice Sets the new options premium pricer contract
+     * @param newOptionsPremiumPricer is the address of the new strike selection contract
+     */
+    function setOptionsPremiumPricer(address newOptionsPremiumPricer)
+        external
+        onlyOwner
+    {
+        require(
+            newOptionsPremiumPricer != address(0),
+            "!newOptionsPremiumPricer"
+        );
+        optionsPremiumPricer = newOptionsPremiumPricer;
     }
 
     /**
@@ -240,7 +256,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
      */
     function setMinPrice(uint256 minPrice) external onlyKeeper {
         require(minPrice > 0, "!minPrice");
-        currentOtokenPremium = minPrice;
+        currentSpreadPremium = minPrice;
     }
 
     /************************************************
@@ -305,7 +321,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
                 OTOKEN_FACTORY: OTOKEN_FACTORY,
                 USDC: USDC,
                 currentSpread: oldSpread,
-                delay: DELAY,
+                delay: 0,
                 strikeSelection: strikeSelection,
                 premiumDiscount: premiumDiscount,
                 SPREAD_TOKEN_IMPL: SPREAD_TOKEN
@@ -320,14 +336,25 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
 
         emit NewSpreadStrikesSelected(strikePrices, deltas, spreadToken);
         
-        require(
-            IOtoken(spread[0]).strikePrice() < IOtoken(spread[1]).strikePrice(),
-            "Short token must have less strike price then long token"
-        );
+        bool isPut = vaultParams.isPut;
+
+        if (isPut) {
+            require(
+                IOtoken(spread[0]).strikePrice() > IOtoken(spread[1]).strikePrice(),
+                "Short put otoken must have higher strike price then long put otoken"
+            );
+        }
+        else {
+            require(
+                IOtoken(spread[0]).strikePrice() < IOtoken(spread[1]).strikePrice(),
+                "Short otoken must have less strike price then long token"
+            );
+        }
+        
         spreadState.nextSpread = spread;
         spreadState.nextSpreadToken = spreadToken;
 
-        uint256 nextOptionReady = block.timestamp + DELAY;
+        uint256 nextOptionReady = block.timestamp + 0;
         require(
             nextOptionReady <= type(uint32).max,
             "Overflow nextOptionReady"
@@ -352,7 +379,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
 
         if (oldSpread.length > 0 && oldSpread[0] != address(0)) {
             uint256 withdrawAmount =
-                VaultLifecycleSpread.settleShort(GAMMA_CONTROLLER, oldSpreadToken);
+                VaultLifecycleSpread.settleSpread(GAMMA_CONTROLLER, oldSpreadToken);
             emit CloseSpread(oldSpread, withdrawAmount, msg.sender, oldSpreadToken);
         }
     }
@@ -423,10 +450,6 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
      * @notice Initiate the gnosis auction.
      */
     function startAuction() external onlyKeeper nonReentrant {
-        _startAuction();
-    }
-
-    function _startAuction() private {
         GnosisAuction.AuctionDetails memory auctionDetails;
 
         address currentSellToken = spreadState.currentSpreadToken;
@@ -435,7 +458,7 @@ contract CallSpread is HimalayanVault, HimalayanCallSpreadStorage {
         auctionDetails.gnosisEasyAuction = GNOSIS_EASY_AUCTION;
         auctionDetails.asset = vaultParams.asset;
         auctionDetails.assetDecimals = vaultParams.decimals;
-        auctionDetails.premium = currentOtokenPremium;
+        auctionDetails.premium = currentSpreadPremium;
         auctionDetails.duration = auctionDuration;
 
         optionAuctionID = VaultLifecycleSpread.startAuction(auctionDetails);

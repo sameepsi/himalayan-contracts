@@ -82,9 +82,6 @@ contract HimalayanVault is
     /// @notice USDC
     address public immutable USDC;
 
-    /// @notice Deprecated: 15 minute timelock between commitAndClose and rollToNexOption.
-    uint256 public constant DELAY = 0;
-
     /// @notice 7 day period between each options sale.
     uint256 public constant PERIOD = 7 days;
 
@@ -225,10 +222,6 @@ contract HimalayanVault is
         require(msg.sender == keeper, "!keeper");
         _;
     }
-
-    /************************************************
-     *  SETTERS
-     ***********************************************/
 
     /**
      * @notice Sets the new keeper
@@ -644,7 +637,7 @@ contract HimalayanVault is
     }
 
     /**
-     * @notice Helper function to make either an ETH transfer or ERC20 transfer
+     * @notice Helper function to make either an NATIVE transfer or ERC20 transfer
      * @param recipient is the receiving address
      * @param amount is the transfer amount
      */

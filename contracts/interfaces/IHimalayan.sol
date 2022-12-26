@@ -58,7 +58,9 @@ interface ISpreadToken {
         string calldata name,
         string calldata symbol,
         address _asset,
-        address _underlying
+        address _underlying,
+        uint256 _expiry,
+        bool _isPut
     )
         external;
 

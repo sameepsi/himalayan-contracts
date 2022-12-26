@@ -12,7 +12,11 @@ contract SpreadToken is SpreadBaseToken {
 
     IERC20 public asset;
 
-    IERC20 public underlying;
+    IERC20 public underlyingAsset;
+
+    uint256 public expiryTimestamp;
+
+    bool public isPut;
 
     address public himalayanVault;
 
@@ -29,19 +33,24 @@ contract SpreadToken is SpreadBaseToken {
         string calldata name,
         string calldata symbol,
         address _asset,
-        address _underlying
+        address _underlying,
+        uint256 _expiry,
+        bool _isPut
     )
         external
     {
         require(!initialized, "Already initialized");
         require(_asset != address(0), "!asset");
         require(_underlying != address(0), "!asset");
+        require(_expiry > block.timestamp, "!expiry");
 
         initialized = true;
         _name = name;
         _symbol = symbol;
         asset = IERC20(_asset);
-        underlying = IERC20(_underlying);
+        underlyingAsset = IERC20(_underlying);
+        expiryTimestamp = _expiry;
+        isPut = _isPut;
         himalayanVault = _msgSender();
 
         IController.ActionArgs[] memory actions =
@@ -73,8 +82,9 @@ contract SpreadToken is SpreadBaseToken {
 
     function settleVault() external {
         require(_msgSender() == himalayanVault, "Unauthorized access");
-
-         IController.ActionArgs[] memory actions =
+        settled = true;
+        
+        IController.ActionArgs[] memory actions =
             new IController.ActionArgs[](1);
 
         actions[0] = IController.ActionArgs(

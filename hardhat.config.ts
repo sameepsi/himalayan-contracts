@@ -52,7 +52,7 @@ export default {
       chainId: 137,
       deploy: ["scripts/deploy_polygon"],
       loggingEnabled: true,
-      gasPrice: 50000000000,
+      gasPrice: 140000000000,
       accounts: process.env.PK.split(",")
     },
     polygon_test: {

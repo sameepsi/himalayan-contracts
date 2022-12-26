@@ -93,7 +93,9 @@ library VaultLifecycleSpread {
             "Call Spread Token",
             "CST",
             asset,
-            underlying
+            underlying,
+            expiry,
+            isPut
         );
 
         return (spread, strikePrices, deltas, spreadToken);
@@ -104,7 +106,9 @@ library VaultLifecycleSpread {
         string memory name,
         string memory symbol,
         address asset,
-        address underlying
+        address underlying,
+        uint256 expiry,
+        bool isPut
     )
         private
         returns(address)
@@ -115,7 +119,9 @@ library VaultLifecycleSpread {
             name,
             symbol,
             asset,
-            underlying
+            underlying,
+            expiry,
+            isPut
         );
 
         return instance;
@@ -484,178 +490,6 @@ library VaultLifecycleSpread {
     }
 
     /**
-     * @notice Close the existing short otoken position. Currently this implementation is simple.
-     * It closes the most recent vault opened by the contract. This assumes that the contract will
-     * only have a single vault open at any given time. Since calling `_closeShort` deletes vaults by
-     calling SettleVault action, this assumption should hold.
-     * @param gammaController is the address of the opyn controller contract
-     * @param spreadToken Token which holds other vault of the strategy
-     * @return amount of collateral redeemed from the vault
-     */
-    function settleShort(address gammaController, address spreadToken) external returns (uint256) {
-        IController controller = IController(gammaController);
-
-        // gets the currently active vault ID
-        uint256 vaultID = controller.getAccountVaultCounter(address(this));
-
-        GammaTypes.Vault memory vault =
-            controller.getVault(address(this), vaultID);
-
-        require(vault.shortOtokens.length > 0, "No short");
-
-        // An otoken's collateralAsset is the vault's `asset`
-        // So in the context of performing Opyn short operations we call them collateralAsset
-        IERC20 collateralToken = IERC20(vault.collateralAssets[0]);
-
-        // The short position has been previously closed, or all the otokens have been burned.
-        // So we return early.
-        if (address(collateralToken) == address(0)) {
-            return 0;
-        }
-
-        // This is equivalent to doing IERC20(vault.asset).balanceOf(address(this))
-        uint256 startCollateralBalance =
-            collateralToken.balanceOf(address(this));
-
-        // If it is after expiry, we need to settle the short position using the normal way
-        // Delete the vault and withdraw all remaining collateral from the vault
-        IController.ActionArgs[] memory actions =
-            new IController.ActionArgs[](1);
-
-        actions[0] = IController.ActionArgs(
-            IController.ActionType.SettleVault,
-            address(this), // owner
-            address(this), // address to transfer to
-            address(0), // not used
-            vaultID, // vaultId
-            0, // not used
-            0, // not used
-            "" // not used
-        );
-
-        controller.operate(actions);
-
-        uint256 endCollateralBalance = collateralToken.balanceOf(address(this));
-
-        ISpreadToken(spreadToken).settleVault();
-
-        return endCollateralBalance - startCollateralBalance;
-    }
-
-    /**
-     * @notice Exercises the ITM option using existing long otoken position. Currently this implementation is simple.
-     * It calls the `Redeem` action to claim the payout.
-     * @param gammaController is the address of the opyn controller contract
-     * @param oldOption is the address of the old option
-     * @param asset is the address of the vault's asset
-     * @return amount of asset received by exercising the option
-     */
-    function settleLong(
-        address gammaController,
-        address oldOption,
-        address asset
-    ) external returns (uint256) {
-        IController controller = IController(gammaController);
-
-        uint256 oldOptionBalance = IERC20(oldOption).balanceOf(address(this));
-
-        if (controller.getPayout(oldOption, oldOptionBalance) == 0) {
-            return 0;
-        }
-
-        uint256 startAssetBalance = IERC20(asset).balanceOf(address(this));
-
-        // If it is after expiry, we need to redeem the profits
-        IController.ActionArgs[] memory actions =
-            new IController.ActionArgs[](1);
-
-        actions[0] = IController.ActionArgs(
-            IController.ActionType.Redeem,
-            address(0), // not used
-            address(this), // address to send profits to
-            oldOption, // address of otoken
-            0, // not used
-            oldOptionBalance, // otoken balance
-            0, // not used
-            "" // not used
-        );
-
-        controller.operate(actions);
-
-        uint256 endAssetBalance = IERC20(asset).balanceOf(address(this));
-
-        return endAssetBalance - startAssetBalance;
-    }
-
-    /**
-     * @notice Burn the remaining oTokens left over from auction. Currently this implementation is simple.
-     * It burns oTokens from the most recent vault opened by the contract. This assumes that the contract will
-     * only have a single vault open at any given time.
-     * @param gammaController is the address of the opyn controller contract
-     * @param currentSpread is the address of the current option
-     * @return amount of collateral redeemed by burning otokens
-     */
-    function burnOtokens(address gammaController, address currentSpread)
-        external
-        returns (uint256)
-    {
-        uint256 numOTokensToBurn =
-            IERC20(currentSpread).balanceOf(address(this));
-
-        require(numOTokensToBurn > 0, "No oTokens to burn");
-
-        IController controller = IController(gammaController);
-
-        // gets the currently active vault ID
-        uint256 vaultID = controller.getAccountVaultCounter(address(this));
-
-        GammaTypes.Vault memory vault =
-            controller.getVault(address(this), vaultID);
-
-        require(vault.shortOtokens.length > 0, "No short");
-
-        IERC20 collateralToken = IERC20(vault.collateralAssets[0]);
-
-        uint256 startCollateralBalance =
-            collateralToken.balanceOf(address(this));
-
-        // Burning `amount` of oTokens from the ribbon vault,
-        // then withdrawing the corresponding collateral amount from the vault
-        IController.ActionArgs[] memory actions =
-            new IController.ActionArgs[](2);
-
-        actions[0] = IController.ActionArgs(
-            IController.ActionType.BurnShortOption,
-            address(this), // owner
-            address(this), // address to transfer from
-            address(vault.shortOtokens[0]), // otoken address
-            vaultID, // vaultId
-            numOTokensToBurn, // amount
-            0, //index
-            "" //data
-        );
-
-        actions[1] = IController.ActionArgs(
-            IController.ActionType.WithdrawCollateral,
-            address(this), // owner
-            address(this), // address to transfer to
-            address(collateralToken), // withdrawn asset
-            vaultID, // vaultId
-            vault.collateralAmounts[0] * (numOTokensToBurn) / (
-                vault.shortAmounts[0]
-            ), // amount
-            0, //index
-            "" //data
-        );
-
-        controller.operate(actions);
-
-        uint256 endCollateralBalance = collateralToken.balanceOf(address(this));
-
-        return endCollateralBalance - startCollateralBalance;
-    }
-
-    /**
      * @notice Calculates the performance and management fee for this week's round
      * @param currentBalance is the balance of funds held on the vault after closing short
      * @param lastLockedAmount is the amount of funds locked from the previous round
@@ -761,6 +595,67 @@ library VaultLifecycleSpread {
         return spread;
     }
 
+
+    /**
+     * @notice Close the existing short otoken position. Currently this implementation is simple.
+     * It closes the most recent vault opened by the contract. This assumes that the contract will
+     * only have a single vault open at any given time. Since calling `_closeShort` deletes vaults by
+     calling SettleVault action, this assumption should hold.
+     * @param gammaController is the address of the opyn controller contract
+     * @param spreadToken Token which holds other vault of the strategy
+     * @return amount of collateral redeemed from the vault
+     */
+    function settleSpread(address gammaController, address spreadToken) external returns (uint256) {
+        IController controller = IController(gammaController);
+
+        // gets the currently active vault ID
+        uint256 vaultID = controller.getAccountVaultCounter(address(this));
+
+        GammaTypes.Vault memory vault =
+            controller.getVault(address(this), vaultID);
+
+        require(vault.shortOtokens.length > 0, "No short");
+
+        // An otoken's collateralAsset is the vault's `asset`
+        // So in the context of performing Opyn short operations we call them collateralAsset
+        IERC20 collateralToken = IERC20(vault.collateralAssets[0]);
+
+        // The short position has been previously closed, or all the otokens have been burned.
+        // So we return early.
+        if (address(collateralToken) == address(0)) {
+            return 0;
+        }
+
+        // This is equivalent to doing IERC20(vault.asset).balanceOf(address(this))
+        uint256 startCollateralBalance =
+            collateralToken.balanceOf(address(this));
+
+        // If it is after expiry, we need to settle the short position using the normal way
+        // Delete the vault and withdraw all remaining collateral from the vault
+        IController.ActionArgs[] memory actions =
+            new IController.ActionArgs[](1);
+
+        actions[0] = IController.ActionArgs(
+            IController.ActionType.SettleVault,
+            address(this), // owner
+            address(this), // address to transfer to
+            address(0), // not used
+            vaultID, // vaultId
+            0, // not used
+            0, // not used
+            "" // not used
+        );
+
+        controller.operate(actions);
+
+        uint256 endCollateralBalance = collateralToken.balanceOf(address(this));
+
+        ISpreadToken(spreadToken).settleVault();
+        ISpreadToken(spreadToken).burnAndClaim();
+
+        return endCollateralBalance - startCollateralBalance;
+    }
+
     function getOrDeployOToken(
         address _factory,
         address _underlyingAsset,
@@ -810,84 +705,6 @@ library VaultLifecycleSpread {
         returns (uint256)
     {
         return GnosisAuction.startAuction(auctionDetails);
-    }
-
-    /**
-     * @notice Settles the gnosis auction
-     * @param gnosisEasyAuction is the contract address of Gnosis easy auction protocol
-     * @param auctionID is the auction ID of the gnosis easy auction
-     */
-    function settleAuction(address gnosisEasyAuction, uint256 auctionID)
-        internal
-    {
-        IGnosisAuction(gnosisEasyAuction).settleAuction(auctionID);
-    }
-
-    /**
-     * @notice Places a bid in an auction
-     * @param bidDetails is the struct with all the details of the
-      bid including the auction's id and how much to bid
-     */
-    function placeBid(GnosisAuction.BidDetails calldata bidDetails)
-        external
-        returns (
-            uint256 sellAmount,
-            uint256 buyAmount,
-            uint64 userId
-        )
-    {
-        return GnosisAuction.placeBid(bidDetails);
-    }
-
-    /**
-     * @notice Claims the oTokens belonging to the vault
-     * @param auctionSellOrder is the sell order of the bid
-     * @param gnosisEasyAuction is the address of the gnosis auction contract
-     holding custody to the funds
-     * @param counterpartyThetaVault is the address of the counterparty theta
-     vault of this delta vault
-     */
-    function claimAuctionOtokens(
-        Vault.AuctionSellOrder calldata auctionSellOrder,
-        address gnosisEasyAuction,
-        address counterpartyThetaVault
-    ) external {
-        GnosisAuction.claimAuctionOtokens(
-            auctionSellOrder,
-            gnosisEasyAuction,
-            counterpartyThetaVault
-        );
-    }
-
-    /**
-     * @notice Gets the settlement price of a settled auction
-     * @param gnosisEasyAuction The address of the Gnosis Easy Auction contract
-     * @return settlementPrice Auction settlement price
-     */
-    function getAuctionSettlementPrice(
-        address gnosisEasyAuction,
-        uint256 optionAuctionID
-    ) public view returns (uint256) {
-        bytes32 clearingPriceOrder =
-            IGnosisAuction(gnosisEasyAuction)
-                .auctionData(optionAuctionID)
-                .clearingPriceOrder;
-
-        if (clearingPriceOrder == bytes32(0)) {
-            // Current auction hasn't settled yet
-            return 0;
-        } else {
-            // We decode the clearingPriceOrder to find the auction settlement price
-            // settlementPrice = clearingPriceOrder.sellAmount / clearingPriceOrder.buyAmount
-            return
-                (10**Vault.OTOKEN_DECIMALS)
-                    * (
-                    uint96(uint256(clearingPriceOrder)) // sellAmount
-                )
-                    / (
-                    uint96(uint256(clearingPriceOrder) >> 96) // buyAmount
-                );
-        }
     }
 
     /**

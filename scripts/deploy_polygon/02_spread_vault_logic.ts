@@ -16,7 +16,7 @@ const main = async ({
 }: HardhatRuntimeEnvironment) => {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
-  console.log(`01 - Deploying Call Spread Vault logic on ${network.name}`);
+  console.log(`01 - Deploying Spread Vault logic on ${network.name}`);
 
   const chainId = network.config.chainId;
 
@@ -27,8 +27,8 @@ const main = async ({
   console.log(`VaultLifecycleSpread @ ${lifecycle.address}`);
 
   const spreadTokenLogic = await deployments.get("SpreadTokenLogic");
-  const vault = await deploy("CallSpreadLogic", {
-    contract: "CallSpread",
+  const vault = await deploy("SpreadVaultLogic", {
+    contract: "SpreadVault",
     from: deployer,
     args: [
       WETH_ADDRESS[chainId],
@@ -43,10 +43,10 @@ const main = async ({
       VaultLifecycleSpread: lifecycle.address,
     },
   });
-  console.log(`CallSpreadLogic @ ${vault.address}`);
+  console.log(`SpreadVaultLogic @ ${vault.address}`);
 
   try {
-    if (!vault.newlyDeployed) {
+    if (vault.newlyDeployed) {
       await run("verify:verify", {
         address: lifecycle.address,
         constructorArguments: [],
@@ -69,6 +69,6 @@ const main = async ({
     console.log(error);
   }
 };
-main.tags = ["CallSpreadLogic"];
+main.tags = ["SpreadVaultLogic"];
 
 export default main;

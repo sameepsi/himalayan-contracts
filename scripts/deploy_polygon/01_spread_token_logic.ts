@@ -19,7 +19,7 @@ const main = async ({
     args: [GAMMA_CONTROLLER[chainId]],
   });
   console.log(`SpreadTokenLogic @ ${spreadTokenLogic.address}`);
-  if (!spreadTokenLogic.newlyDeployed) {
+  if (spreadTokenLogic.newlyDeployed) {
     try {
       await run("verify:verify", {
         address: spreadTokenLogic.address,
