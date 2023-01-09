@@ -35,8 +35,9 @@ library VaultLifecycleSpread {
         address SPREAD_TOKEN_IMPL;
     }
 
-    /// @notice Default maximum option allocation for the queue (50%)
-    uint256 internal constant QUEUE_OPTION_ALLOCATION = 5000;
+    // Number of weeks per year = 52.142857 weeks * FEE_MULTIPLIER = 52142857
+    // Dividing by weeks per year requires doing (num * FEE_MULTIPLIER) / WEEKS_PER_YEAR
+    uint256 internal constant WEEKS_PER_YEAR = 52142857;
 
     /**
      * @notice Sets the next spread for the vault, and calculates its premium for the auction
@@ -273,6 +274,7 @@ library VaultLifecycleSpread {
      * @param marginPool is the address of the opyn margin contract which holds the collateral
      * @param spread Spread oTokens
      * @param depositAmount is the amount of collateral to deposit
+     * @param newVault whether to create new vault or not
      * @param spreadToken Spread Token
      * @return mintAmount spreadToken mint amount
      * @return collateralUsed collateral amount used to create spread
@@ -282,12 +284,9 @@ library VaultLifecycleSpread {
         address marginPool,
         address[] calldata spread,
         uint256 depositAmount,
-        address spreadToken
+        address spreadToken,
+        bool newVault
     ) public returns (uint256 mintAmount, uint256 collateralUsed) {
-        IController controller = IController(gammaController);
-        uint256 newVaultID =
-            (controller.getAccountVaultCounter(address(this))) + 1;
-
         
         // An otoken's collateralAsset is the vault's `asset`
         // So in the context of performing Opyn short operations we call them collateralAsset
@@ -334,43 +333,83 @@ library VaultLifecycleSpread {
             IERC20 collateralToken = IERC20(collateralAsset);
             collateralToken.safeApproveNonCompliant(marginPool, depositAmount);
 
-            IController.ActionArgs[] memory actions =
-                new IController.ActionArgs[](3);
+            if (newVault) {
+                IController controller = IController(gammaController);
+                uint256 vaultId =
+                    (controller.getAccountVaultCounter(address(this)));
+                vaultId = vaultId + 1;
 
-            actions[0] = IController.ActionArgs(
-                IController.ActionType.OpenVault,
-                address(this), // owner
-                address(this), // receiver
-                address(0), // asset, otoken
-                newVaultID, // vaultId
-                0, // amount
-                0, //index
-                "" //data
-            );
+                IController.ActionArgs[] memory actions =
+                    new IController.ActionArgs[](3);
 
-            actions[1] = IController.ActionArgs(
-                IController.ActionType.DepositCollateral,
-                address(this), // owner
-                address(this), // address to transfer from
-                collateralAsset, // deposited asset
-                newVaultID, // vaultId
-                depositAmount, // amount
-                0, //index
-                "" //data
-            );
+                actions[0] = IController.ActionArgs(
+                    IController.ActionType.OpenVault,
+                    address(this), // owner
+                    address(this), // receiver
+                    address(0), // asset, otoken
+                    vaultId, // vaultId
+                    0, // amount
+                    0, //index
+                    "" //data
+                );
 
-            actions[2] = IController.ActionArgs(
-                IController.ActionType.MintShortOption,
-                address(this), // owner
-                address(this), // address to transfer to
-                spread[0], // short option address
-                newVaultID, // vaultId
-                mintAmount, // amount
-                0, //index
-                "" //data
-            );
+                actions[1] = IController.ActionArgs(
+                    IController.ActionType.DepositCollateral,
+                    address(this), // owner
+                    address(this), // address to transfer from
+                    collateralAsset, // deposited asset
+                    vaultId, // vaultId
+                    depositAmount, // amount
+                    0, //index
+                    "" //data
+                );
 
-            controller.operate(actions);
+                actions[2] = IController.ActionArgs(
+                    IController.ActionType.MintShortOption,
+                    address(this), // owner
+                    address(this), // address to transfer to
+                    spread[0], // short option address
+                    vaultId, // vaultId
+                    mintAmount, // amount
+                    0, //index
+                    "" //data
+                );
+
+                controller.operate(actions);
+            }
+
+            else {
+                IController controller = IController(gammaController);
+                uint256 vaultId =
+                    (controller.getAccountVaultCounter(address(this)));
+                IController.ActionArgs[] memory actions =
+                    new IController.ActionArgs[](2);
+
+                actions[0] = IController.ActionArgs(
+                    IController.ActionType.DepositCollateral,
+                    address(this), // owner
+                    address(this), // address to transfer from
+                    collateralAsset, // deposited asset
+                    vaultId, // vaultId
+                    depositAmount, // amount
+                    0, //index
+                    "" //data
+                );
+
+                actions[1] = IController.ActionArgs(
+                    IController.ActionType.MintShortOption,
+                    address(this), // owner
+                    address(this), // address to transfer to
+                    spread[0], // short option address
+                    vaultId, // vaultId
+                    mintAmount, // amount
+                    0, //index
+                    "" //data
+                );
+
+                controller.operate(actions);
+            }
+            
         
         }
         
@@ -387,7 +426,6 @@ library VaultLifecycleSpread {
             marginPool,
             collateralAsset,
             depositAmount,
-            newVaultID,
             spread,
             mintAmount
         );
@@ -441,7 +479,6 @@ library VaultLifecycleSpread {
         address marginPool,
         address collateralAsset,
         uint256 collateralDeposited,
-        uint256 vaultId,
         address[] memory spread,
         uint256 mintAmount
     )
@@ -449,6 +486,9 @@ library VaultLifecycleSpread {
         returns(uint256 collateralUsed)
     {
         IController controller = IController(gammaController);
+        uint256 vaultId =
+            (controller.getAccountVaultCounter(address(this)));
+            
         IMarginCalculator calculator = IMarginCalculator(controller.calculator());
 
         IERC20 longOption = IERC20(spread[1]);

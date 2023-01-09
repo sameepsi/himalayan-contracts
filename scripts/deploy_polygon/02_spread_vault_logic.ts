@@ -48,10 +48,6 @@ const main = async ({
   try {
     if (vault.newlyDeployed) {
       await run("verify:verify", {
-        address: lifecycle.address,
-        constructorArguments: [],
-      });
-      await run("verify:verify", {
         address: vault.address,
         constructorArguments: [
           WETH_ADDRESS[chainId],
@@ -63,6 +59,11 @@ const main = async ({
           spreadTokenLogic.address,
         ],
       });
+      await run("verify:verify", {
+        address: lifecycle.address,
+        constructorArguments: [],
+      });
+      
       
     }
   } catch (error) {

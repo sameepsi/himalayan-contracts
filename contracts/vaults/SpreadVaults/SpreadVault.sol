@@ -354,13 +354,12 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
         spreadState.nextSpread = spread;
         spreadState.nextSpreadToken = spreadToken;
 
-        uint256 nextOptionReady = block.timestamp + 0;
+        uint256 nextOptionReady = block.timestamp;
         require(
             nextOptionReady <= type(uint32).max,
             "Overflow nextOptionReady"
         );
         spreadState.nextOptionReadyAt = uint32(nextOptionReady);
-        vaultState.lockedAmountUsed = 0;
 
         _closeSpread(oldSpread, oldSpreadToken);
     }
@@ -374,7 +373,8 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
             vaultState.lastLockedAmount = uint104(lockedAmount);
         }
         vaultState.lockedAmount = 0;
-
+        vaultState.lockedAmountUsed = 0;
+        
         delete spreadState.currentSpread;
 
         if (oldSpread.length > 0 && oldSpread[0] != address(0)) {
@@ -432,16 +432,17 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
                     MARGIN_POOL,
                     newSpread,
                     lockedBalance,
-                    spreadToken
+                    spreadToken,
+                    lockedAmountUsed == 0
                 );
             
             totalMinted = totalMinted + optionsMintAmount;
             index = index - 1;
-
-            vaultState.lockedAmountUsed = vaultState.lockedAmountUsed + uint104(collateralUsed);
+            lockedAmountUsed = lockedAmountUsed + uint104(collateralUsed);
+            
             lockedBalance = lockedBalance - collateralUsed;
         }
-
+        vaultState.lockedAmountUsed = vaultState.lockedAmountUsed + lockedAmountUsed;
         ISpreadToken(spreadToken).mint(totalMinted);
 
     }

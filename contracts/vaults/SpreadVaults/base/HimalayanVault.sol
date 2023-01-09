@@ -82,13 +82,6 @@ contract HimalayanVault is
     /// @notice USDC
     address public immutable USDC;
 
-    /// @notice 7 day period between each options sale.
-    uint256 public constant PERIOD = 7 days;
-
-    // Number of weeks per year = 52.142857 weeks * FEE_MULTIPLIER = 52142857
-    // Dividing by weeks per year requires doing (num * FEE_MULTIPLIER) / WEEKS_PER_YEAR
-    uint256 private constant WEEKS_PER_YEAR = 52142857;
-
     // GAMMA_CONTROLLER is the top-level contract in Gamma protocol
     // which allows users to perform multiple actions on their vaults
     // and positions https://github.com/opynfinance/GammaProtocol/blob/master/contracts/core/Controller.sol
@@ -103,7 +96,7 @@ contract HimalayanVault is
     // https://github.com/gnosis/ido-contracts/blob/main/contracts/EasyAuction.sol
     address public immutable GNOSIS_EASY_AUCTION;
 
-    //TOKEN ADDRESS TO BE USED FOR DISTRIUTING COLLATERAL AFTER VAULT SETTLEMENT
+    //IMPL OF SYMBOLIC SPREAD TOKEN
     address public immutable SPREAD_TOKEN;
 
     /************************************************
@@ -204,7 +197,7 @@ contract HimalayanVault is
 
         feeRecipient = _feeRecipient;
         performanceFee = _performanceFee;
-        managementFee = (_managementFee * Vault.FEE_MULTIPLIER) / WEEKS_PER_YEAR;
+        managementFee = (_managementFee * Vault.FEE_MULTIPLIER) / VaultLifecycleSpread.WEEKS_PER_YEAR;
         vaultParams = _vaultParams;
 
         uint256 assetBalance =
@@ -254,7 +247,7 @@ contract HimalayanVault is
 
         // We are dividing annualized management fee by num weeks in a year
         uint256 tmpManagementFee =
-            (newManagementFee * Vault.FEE_MULTIPLIER) / WEEKS_PER_YEAR;
+            (newManagementFee * Vault.FEE_MULTIPLIER) / VaultLifecycleSpread.WEEKS_PER_YEAR;
 
         emit ManagementFeeSet(managementFee, newManagementFee);
 
@@ -405,7 +398,7 @@ contract HimalayanVault is
             depositReceipts[msg.sender].amount > 0 ||
             depositReceipts[msg.sender].unredeemedShares > 0
         ) {
-            _redeem(0, true);
+            redeem(0, true);
         }
 
         // This caches the `round` variable used in shareBalances
@@ -473,26 +466,12 @@ contract HimalayanVault is
 
     /**
      * @notice Redeems shares that are owed to the account
-     * @param numShares is the number of shares to redeem
-     */
-    function redeem(uint256 numShares) external nonReentrant {
-        require(numShares > 0, "!numShares");
-        _redeem(numShares, false);
-    }
-
-    /**
-     * @notice Redeems the entire unredeemedShares balance that is owed to the account
-     */
-    function maxRedeem() external nonReentrant {
-        _redeem(0, true);
-    }
-
-    /**
-     * @notice Redeems shares that are owed to the account
      * @param numShares is the number of shares to redeem, could be 0 when isMax=true
      * @param isMax is flag for when callers do a max redemption
      */
-    function _redeem(uint256 numShares, bool isMax) internal {
+    function redeem(uint256 numShares, bool isMax) public {
+        require(numShares > 0 || isMax, "!numShares");
+
         Vault.DepositReceipt memory depositReceipt =
             depositReceipts[msg.sender];
 
@@ -734,7 +713,7 @@ contract HimalayanVault is
      */
     function totalBalance() public view returns (uint256) {
         return
-            uint256(vaultState.lockedAmount) +
+            uint256(vaultState.lockedAmountUsed) +
                 IERC20(vaultParams.asset).balanceOf(address(this));
     }
 

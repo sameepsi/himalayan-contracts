@@ -61,7 +61,7 @@ const main = async ({
   const underlyingOracle = ETH_PRICE_ORACLE[chainId];
   const stablesOracle = USDC_PRICE_ORACLE[chainId];
 
-  const pricer = await deploy("OptionsPremiumPricerMatic10", {
+  const pricer = await deploy("OptionsPremiumPricerMaticCallSpread", {
     from: deployer,
     contract: {
       abi: OptionsPremiumPricerInStables_ABI,
@@ -75,9 +75,9 @@ const main = async ({
     ],
   });
 
-  console.log(`RibbonThetaVaultMATICCall 10% pricer @ ${pricer.address}`);
+  console.log(`OptionsPremiumPricerMaticCallSpread pricer @ ${pricer.address}`);
 
-  const strikeSelection = await deploy("StrikeSelectionMATICSpread", {
+  const strikeSelection = await deploy("StrikeSelectionMATICCallSpread", {
     contract: "ManualStrikeSelectionCallSpread",
     from: deployer,
     args: [],
@@ -87,7 +87,7 @@ const main = async ({
   const strikeSelectionInstance = await StrikeSelection.attach(strikeSelection.address);
 
   console.log(
-    `HimalayanCallSpreadMatic strikeSelection @ ${strikeSelection.address}`
+    `StrikeSelectionMATICCallSpread strikeSelection @ ${strikeSelection.address}`
   );
 
   try {
@@ -147,14 +147,15 @@ const main = async ({
     args: [logicDeployment.address, admin, initData],
   });
 
-  console.log(`HimalayanCallSpreadMatic 10 %Proxy @ ${proxy.address}`);
+  console.log(`HimalayanCallSpreadMatic %Proxy @ ${proxy.address}`);
 
   const himalayanSpreadVault = HimalayanSpreadVault.attach(proxy.address);
   
   try {
-    if(!proxy.newlyDeployed) {
-      await strikeSelectionInstance.setStrikePrice([78000000,95000000]);
+    if(proxy.newlyDeployed) {
       await himalayanSpreadVault.setMinPrice(5000000000000000)
+      await strikeSelectionInstance.setStrikePrice([78000000,95000000]);
+      
       await run("verify:verify", {
         address: proxy.address,
         constructorArguments: [logicDeployment.address, admin, initData],

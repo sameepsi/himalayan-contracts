@@ -78,7 +78,7 @@ const main = async ({
 
   console.log(`OptionsPremiumPricerMaticPutSpread pricer @ ${pricer.address}`);
 
-  const strikeSelection = await deploy("StrikeSelectionMATICSpread", {
+  const strikeSelection = await deploy("StrikeSelectionMATICPutSpread", {
     contract: "ManualStrikeSelectionCallSpread",
     from: deployer,
     args: [],
@@ -153,9 +153,10 @@ const main = async ({
   const himalayanSpreadVault = HimalayanSpreadVault.attach(proxy.address);
   
   try {
-    if(!proxy.newlyDeployed) {
-      await strikeSelectionInstance.setStrikePrice([95000000, 78000000]);
+    if(proxy.newlyDeployed) {
       await himalayanSpreadVault.setMinPrice(5000000000000000)
+      await strikeSelectionInstance.setStrikePrice([95000000, 78000000]);
+      
       await run("verify:verify", {
         address: proxy.address,
         constructorArguments: [logicDeployment.address, admin, initData],
