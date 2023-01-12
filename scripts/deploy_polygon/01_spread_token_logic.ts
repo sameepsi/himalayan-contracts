@@ -1,4 +1,4 @@
-import { run } from "hardhat";
+import hre, { run } from "hardhat";
 import { HardhatRuntimeEnvironment } from "hardhat/types";
 import { GAMMA_CONTROLLER } from "../../constants/constants";
 
@@ -10,7 +10,7 @@ const main = async ({
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
   console.log(`01 - Deploying SpreadToken logic on ${network.name}`);
-
+  const networkName = hre.network.name;
   const chainId = network.config.chainId;
 
   const spreadTokenLogic = await deploy("SpreadTokenLogic", {
@@ -21,10 +21,17 @@ const main = async ({
   console.log(`SpreadTokenLogic @ ${spreadTokenLogic.address}`);
   if (spreadTokenLogic.newlyDeployed) {
     try {
-      await run("verify:verify", {
-        address: spreadTokenLogic.address,
-        constructorArguments: [GAMMA_CONTROLLER[chainId]],
-      });
+      if (networkName === "tenderly") {
+        await hre.tenderly.verify({
+          name: "SpreadToken",
+          address: spreadTokenLogic.address,
+        });
+      }
+      else
+        await run("verify:verify", {
+          address: spreadTokenLogic.address,
+          constructorArguments: [GAMMA_CONTROLLER[chainId]],
+        });
     } catch (error) {
       console.log(error);
     }

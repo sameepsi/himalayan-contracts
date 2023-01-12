@@ -11,6 +11,8 @@ import exportDeployments from "./scripts/tasks/exportDeployments";
 import verifyContracts from "./scripts/tasks/verifyContracts";
 import { BLOCK_NUMBER } from "./constants/constants";
 import { TEST_URI } from "./scripts/helpers/getDefaultEthersProvider";
+import * as tdly from "@tenderly/hardhat-tenderly";
+tdly.setup();
 
 require("dotenv").config();
 
@@ -91,6 +93,12 @@ export default {
       accounts: {
         mnemonic: process.env.FUJI_MNEMONIC,
       },
+    },
+    tenderly: {
+      chainId: 137, // chain you forked
+      url: "https://rpc.tenderly.co/fork/0d60c346-d3e5-4624-9949-759f863c308a",
+      deploy: ["scripts/deploy_polygon"],
+      accounts: process.env.PK.split(","),
     },
   },
   namedAccounts: {

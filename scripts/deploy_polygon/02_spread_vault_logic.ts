@@ -19,6 +19,7 @@ const main = async ({
   console.log(`01 - Deploying Spread Vault logic on ${network.name}`);
 
   const chainId = network.config.chainId;
+  console.log(chainId);
 
   const lifecycle = await deploy("VaultLifecycleSpread", {
     contract: "VaultLifecycleSpread",
@@ -27,25 +28,26 @@ const main = async ({
   console.log(`VaultLifecycleSpread @ ${lifecycle.address}`);
 
   const spreadTokenLogic = await deployments.get("SpreadTokenLogic");
-  const vault = await deploy("SpreadVaultLogic", {
-    contract: "SpreadVault",
-    from: deployer,
-    args: [
-      WETH_ADDRESS[chainId],
-      USDC_ADDRESS[chainId],
-      OTOKEN_FACTORY[chainId],
-      GAMMA_CONTROLLER[chainId],
-      MARGIN_POOL[chainId],
-      GNOSIS_EASY_AUCTION[chainId],
-      spreadTokenLogic.address,
-    ],
-    libraries: {
-      VaultLifecycleSpread: lifecycle.address,
-    },
-  });
-  console.log(`SpreadVaultLogic @ ${vault.address}`);
-
+  
   try {
+    const vault = await deploy("SpreadVaultLogic", {
+      contract: "SpreadVault",
+      from: deployer,
+      args: [
+        WETH_ADDRESS[chainId],
+        USDC_ADDRESS[chainId],
+        OTOKEN_FACTORY[chainId],
+        GAMMA_CONTROLLER[chainId],
+        MARGIN_POOL[chainId],
+        GNOSIS_EASY_AUCTION[chainId],
+        spreadTokenLogic.address,
+      ],
+      libraries: {
+        VaultLifecycleSpread: lifecycle.address,
+      },
+    });
+    console.log(`SpreadVaultLogic @ ${vault.address}`);
+  
     if (vault.newlyDeployed) {
       await run("verify:verify", {
         address: vault.address,
