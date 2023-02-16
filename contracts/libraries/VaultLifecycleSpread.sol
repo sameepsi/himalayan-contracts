@@ -796,7 +796,7 @@ library VaultLifecycleSpread {
         view
         returns (uint256)
     {
-        if (currentSpread == address(0)) {
+        /**if (currentSpread == address(0)) {
             return getNextDay(block.timestamp);
         }
         uint256 currentExpiry = IOtoken(currentSpread).expiryTimestamp();
@@ -806,22 +806,21 @@ library VaultLifecycleSpread {
         if (block.timestamp > currentExpiry + 1 days) {
             return getNextDay(block.timestamp);
         }
-        return getNextDay(currentExpiry);
+        return getNextDay(currentExpiry);*/
 
 
-        //TODO UNCOMMENT THIS
-        // uninitialized state
-        /**if (currentOption == address(0)) {
+        if (currentSpread == address(0)) {
             return getNextFriday(block.timestamp);
         }
-        uint256 currentExpiry = IOtoken(currentOption).expiryTimestamp();
+        uint256 currentExpiry = IOtoken(currentSpread).expiryTimestamp();
+
         // After options expiry if no options are written for >1 week
         // We need to give the ability continue writing options
-        if (block.timestamp > currentExpiry + 7 days) {
+        if (block.timestamp > currentExpiry + 1 days) {
             return getNextFriday(block.timestamp);
         }
         return getNextFriday(currentExpiry);
-        */
+
     }
 
     /**
@@ -847,7 +846,7 @@ library VaultLifecycleSpread {
     }
 
     //TODO: REMOVE THIS
-    function getNextDay(uint256 timestamp) internal pure returns (uint256) {
+    /**function getNextDay(uint256 timestamp) internal pure returns (uint256) {
         // dayOfWeek = 0 (sunday) - 6 (saturday)
         uint256 nextDay = timestamp + 1 days;
         uint256 nextDay8am = nextDay - (nextDay % (24 hours)) + (8 hours);
@@ -857,5 +856,5 @@ library VaultLifecycleSpread {
             nextDay8am += 1 days;
         }
         return nextDay8am;
-    }
+    }*/
 }
