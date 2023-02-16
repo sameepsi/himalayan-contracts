@@ -312,10 +312,12 @@ library VaultLifecycleSpread {
                 // To test this behavior, we can console.log
                 // MarginCalculatorInterface(0x7A48d10f372b3D7c60f6c9770B91398e4ccfd3C7).getExcessCollateral(vault)
                 // to see how much dust (or excess collateral) is left behind.
-                mintAmount = depositAmount
+                mintAmount = (
+                    depositAmount
                     * (10**Vault.OTOKEN_DECIMALS)
                     * (10**18) // we use 10**18 to give extra precision
-                    / (oToken.strikePrice() * (10**(10 + collateralDecimals)));
+                    / oToken.strikePrice()
+                ) * (10**(10 + collateralDecimals));
             } else {
                 mintAmount = depositAmount;
 
@@ -573,15 +575,10 @@ library VaultLifecycleSpread {
         // do not collect performance fee for last week
         if (lockedBalanceSansPending > lastLockedAmount) {
             _performanceFeeInAsset = performanceFeePercent > 0
-                ? lockedBalanceSansPending
-                    - (lastLockedAmount)
-                    * (performanceFeePercent)
-                    / (100 * Vault.FEE_MULTIPLIER)
+                ? ((lockedBalanceSansPending - lastLockedAmount) * performanceFeePercent)/ (100 * Vault.FEE_MULTIPLIER)
                 : 0;
             _managementFeeInAsset = managementFeePercent > 0
-                ? lockedBalanceSansPending * (managementFeePercent) / (
-                    100 * Vault.FEE_MULTIPLIER
-                )
+                ? (lockedBalanceSansPending * managementFeePercent) / (100 * Vault.FEE_MULTIPLIER)
                 : 0;
 
             _vaultFee = _performanceFeeInAsset + _managementFeeInAsset;
