@@ -316,8 +316,7 @@ library VaultLifecycleSpread {
                     depositAmount
                     * (10**Vault.OTOKEN_DECIMALS)
                     * (10**18) // we use 10**18 to give extra precision
-                    / oToken.strikePrice()
-                ) * (10**(10 + collateralDecimals));
+                ) / (oToken.strikePrice() * (10**(10 + collateralDecimals)));
             } else {
                 mintAmount = depositAmount;
 
