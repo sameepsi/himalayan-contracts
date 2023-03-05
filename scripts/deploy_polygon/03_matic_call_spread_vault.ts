@@ -1,5 +1,4 @@
 import { run } from "hardhat";
-import { HardhatRuntimeEnvironment } from "hardhat/types";
 import {
   CHAINID,
   WETH_ADDRESS,
@@ -18,7 +17,7 @@ import OptionsPremiumPricerInStables_ABI from "../../constants/abis/OptionsPremi
 import ManualVolOracle_ABI from "../../constants/abis/ManualVolOracle.json";
 
 const TOKEN_NAME = {
-  [CHAINID.POLYGON_MAINNET]: "Himalayan MATIC Spread Vault",
+  [CHAINID.POLYGON_MAINNET]: "Himalayan MATIC Call Spread Vault",
   [CHAINID.ETH_MAINNET]: "Himalayan ETH Theta Vault",
   [CHAINID.ETH_KOVAN]: "Himalayan ETH Theta Vault",
   [CHAINID.AVAX_MAINNET]: "Himalayan AVAX Theta Vault",
@@ -26,7 +25,7 @@ const TOKEN_NAME = {
 };
 
 const TOKEN_SYMBOL = {
-  [CHAINID.POLYGON_MAINNET]: "hSMATIC10",
+  [CHAINID.POLYGON_MAINNET]: "hMATIC-CS",
   [CHAINID.ETH_MAINNET]: "rETH-THETA",
   [CHAINID.ETH_KOVAN]: "rETH-THETA",
   [CHAINID.AVAX_MAINNET]: "rAVAX-THETA",
@@ -38,26 +37,25 @@ const main = async ({
   deployments,
   ethers,
   getNamedAccounts,
-}: HardhatRuntimeEnvironment) => {
+}) => {
   const { BigNumber } = ethers;
   const { parseEther } = ethers.utils;
   const { deploy } = deployments;
-  const { deployer, owner, keeper, admin, feeRecipient } =
-    await getNamedAccounts();
-  console.log(`02 - Deploying MATIC Call SPREAD Vault on ${network.name}`);
+  const { deployer, owner, keeper, admin, feeRecipient } = await getNamedAccounts();
+  console.log(`03 - Deploying MATIC Call SPREAD Vault on ${network.name}`);
 
   const chainId = network.config.chainId;
-
 
   // Can't verify pricer because it's compiled with 0.7.3
   const manualVolOracle = await deployments.get("ManualVolOracle");
   const manualVolOracleContract = await ethers.getContractAt(ManualVolOracle_ABI, manualVolOracle.address);
   const optionId = await manualVolOracleContract.getOptionId(
-    "10",
-    WETH_ADDRESS[chainId],
-    WETH_ADDRESS[chainId],
-    false
+    "10", // dynamic delta required
+    WETH_ADDRESS[chainId], // underlying
+    WETH_ADDRESS[chainId], // collateralAsset
+    false // isPut
   );
+
   const underlyingOracle = ETH_PRICE_ORACLE[chainId];
   const stablesOracle = USDC_PRICE_ORACLE[chainId];
 
@@ -82,17 +80,10 @@ const main = async ({
     from: deployer,
     args: [],
   });
-
-  const StrikeSelection = await ethers.getContractFactory('ManualStrikeSelectionCallSpread');
-  const strikeSelectionInstance = await StrikeSelection.attach(strikeSelection.address);
-
-  console.log(
-    `StrikeSelectionMATICCallSpread strikeSelection @ ${strikeSelection.address}`
-  );
+  console.log(`StrikeSelectionMATICCallSpread strikeSelection @ ${strikeSelection.address}`);
 
   try {
-
-    if(strikeSelection.newlyDeployed) {
+    if (strikeSelection.newlyDeployed) {
       await run("verify:verify", {
         address: strikeSelection.address,
         constructorArguments: [],
@@ -109,7 +100,7 @@ const main = async ({
     libraries: {
       VaultLifecycleSpread: lifecycle.address,
     },
-  });;
+  });
 
   const initArgs = [
     {
@@ -146,16 +137,18 @@ const main = async ({
     from: deployer,
     args: [logicDeployment.address, admin, initData],
   });
-
   console.log(`HimalayanCallSpreadMatic %Proxy @ ${proxy.address}`);
 
-  const himalayanSpreadVault = HimalayanSpreadVault.attach(proxy.address);
-  
   try {
-    if(proxy.newlyDeployed) {
-      await himalayanSpreadVault.setMinPrice(5000000000000000)
-      await strikeSelectionInstance.setStrikePrice([78000000,95000000]);
-      
+    if (proxy.newlyDeployed) {
+
+      // const himalayanSpreadVault = HimalayanSpreadVault.attach(proxy.address);
+      // await himalayanSpreadVault.setMinPrice(9400000000000000); // dynamic
+
+      // const StrikeSelection = await ethers.getContractFactory('ManualStrikeSelectionCallSpread');
+      // const strikeSelectionInstance = await StrikeSelection.attach(strikeSelection.address);
+      // await strikeSelectionInstance.setStrikePrice([155000000,169000000]); // strikes
+
       await run("verify:verify", {
         address: proxy.address,
         constructorArguments: [logicDeployment.address, admin, initData],

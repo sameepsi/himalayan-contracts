@@ -7,10 +7,10 @@ const main = async ({
   deployments,
   getNamedAccounts,
 }: HardhatRuntimeEnvironment) => {
+
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
   console.log(`01 - Deploying SpreadToken logic on ${network.name}`);
-  const networkName = hre.network.name;
   const chainId = network.config.chainId;
 
   const spreadTokenLogic = await deploy("SpreadTokenLogic", {
@@ -19,23 +19,18 @@ const main = async ({
     args: [GAMMA_CONTROLLER[chainId]],
   });
   console.log(`SpreadTokenLogic @ ${spreadTokenLogic.address}`);
+
   if (spreadTokenLogic.newlyDeployed) {
     try {
-      if (networkName === "tenderly") {
-        await hre.tenderly.verify({
-          name: "SpreadToken",
-          address: spreadTokenLogic.address,
-        });
-      }
-      else
-        await run("verify:verify", {
-          address: spreadTokenLogic.address,
-          constructorArguments: [GAMMA_CONTROLLER[chainId]],
-        });
+      await run("verify:verify", {
+        address: spreadTokenLogic.address,
+        constructorArguments: [GAMMA_CONTROLLER[chainId]],
+      });
     } catch (error) {
       console.log(error);
     }
   }
+
 };
 main.tags = ["SpreadTokenLogic"];
 

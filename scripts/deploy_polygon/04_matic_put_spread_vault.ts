@@ -1,5 +1,4 @@
 import { run } from "hardhat";
-import { HardhatRuntimeEnvironment } from "hardhat/types";
 import {
   CHAINID,
   WETH_ADDRESS,
@@ -27,7 +26,7 @@ const TOKEN_NAME = {
 };
 
 const TOKEN_SYMBOL = {
-  [CHAINID.POLYGON_MAINNET]: "HPSMATIC",
+  [CHAINID.POLYGON_MAINNET]: "hMATIC-PS",
   [CHAINID.ETH_MAINNET]: "rETH-THETA",
   [CHAINID.ETH_KOVAN]: "rETH-THETA",
   [CHAINID.AVAX_MAINNET]: "rAVAX-THETA",
@@ -39,25 +38,21 @@ const main = async ({
   deployments,
   ethers,
   getNamedAccounts,
-}: HardhatRuntimeEnvironment) => {
-  const { BigNumber } = ethers;
-  const { parseEther } = ethers.utils;
+}) => {
+
   const { deploy } = deployments;
-  const { deployer, owner, keeper, admin, feeRecipient } =
-    await getNamedAccounts();
-  console.log(`02 - Deploying MATIC PUT spread VAULT on ${network.name}`);
-
+  const { deployer, owner, keeper, admin, feeRecipient } = await getNamedAccounts();
+  console.log(`04 - Deploying MATIC PUT spread VAULT on ${network.name}`);
   const chainId = network.config.chainId;
-
 
   // Can't verify pricer because it's compiled with 0.7.3
   const manualVolOracle = await deployments.get("ManualVolOracle");
   const manualVolOracleContract = await ethers.getContractAt(ManualVolOracle_ABI, manualVolOracle.address);
   const optionId = await manualVolOracleContract.getOptionId(
-    "10",
-    WETH_ADDRESS[chainId],
-    WETH_ADDRESS[chainId],
-    true
+    "10", // delta
+    WETH_ADDRESS[chainId], // underlying
+    WETH_ADDRESS[chainId], // collateralAsset
+    true // isPut
   );
   const underlyingOracle = ETH_PRICE_ORACLE[chainId];
   const stablesOracle = USDC_PRICE_ORACLE[chainId];
@@ -75,7 +70,6 @@ const main = async ({
       stablesOracle,
     ],
   });
-
   console.log(`OptionsPremiumPricerMaticPutSpread pricer @ ${pricer.address}`);
 
   const strikeSelection = await deploy("StrikeSelectionMATICPutSpread", {
@@ -83,17 +77,10 @@ const main = async ({
     from: deployer,
     args: [],
   });
-
-  const StrikeSelection = await ethers.getContractFactory('ManualStrikeSelectionCallSpread');
-  const strikeSelectionInstance = await StrikeSelection.attach(strikeSelection.address);
-
-  console.log(
-    `HimalayanPutSpreadMatic strikeSelection @ ${strikeSelection.address}`
-  );
+  console.log(`HimalayanPutSpreadMatic strikeSelection @ ${strikeSelection.address}`);
 
   try {
-
-    if(strikeSelection.newlyDeployed) {
+    if (strikeSelection.newlyDeployed) {
       await run("verify:verify", {
         address: strikeSelection.address,
         constructorArguments: [],
@@ -110,7 +97,7 @@ const main = async ({
     libraries: {
       VaultLifecycleSpread: lifecycle.address,
     },
-  });;
+  });
 
   const initArgs = [
     {
@@ -150,13 +137,16 @@ const main = async ({
 
   console.log(`HimalayanPutSpreadMatic %Proxy @ ${proxy.address}`);
 
-  const himalayanSpreadVault = HimalayanSpreadVault.attach(proxy.address);
-  
   try {
-    if(proxy.newlyDeployed) {
-      await himalayanSpreadVault.setMinPrice(5000000000000000)
-      await strikeSelectionInstance.setStrikePrice([95000000, 78000000]);
-      
+    if (proxy.newlyDeployed) {
+
+      // const himalayanSpreadVault = HimalayanSpreadVault.attach(proxy.address);
+      // await himalayanSpreadVault.setMinPrice(90000000000000000);
+
+      // const StrikeSelection = await ethers.getContractFactory('ManualStrikeSelectionCallSpread');
+      // const strikeSelectionInstance = await StrikeSelection.attach(strikeSelection.address);
+      // await strikeSelectionInstance.setStrikePrice([168000000, 154000000]);
+
       await run("verify:verify", {
         address: proxy.address,
         constructorArguments: [logicDeployment.address, admin, initData],
@@ -165,6 +155,7 @@ const main = async ({
   } catch (error) {
     console.log(error);
   }
+
 };
 main.tags = ["HimalayanPutSpreadMatic"];
 main.dependencies = ["SpreadVaultLogic"];
