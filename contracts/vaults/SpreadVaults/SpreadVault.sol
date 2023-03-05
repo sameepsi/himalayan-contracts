@@ -122,6 +122,7 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
      * @param _marginPool is the contract address for providing collateral to opyn
      * @param _gnosisEasyAuction is the contract address that facilitates gnosis auctions
      * @param _spreadTokenLogic Spread token logic contract
+     * @param _optionsExpiryInDays is duration for options expiry in days.
      */
     constructor(
         address _wnative,
@@ -130,7 +131,8 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
         address _gammaController,
         address _marginPool,
         address _gnosisEasyAuction,
-        address _spreadTokenLogic
+        address _spreadTokenLogic,
+        uint256 _optionsExpiryInDays
     )
         HimalayanVault(
             _wnative,
@@ -138,7 +140,8 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
             _gammaController,
             _marginPool,
             _gnosisEasyAuction,
-            _spreadTokenLogic
+            _spreadTokenLogic,
+            _optionsExpiryInDays
         )
     {
         require(_oTokenFactory != address(0), "!_oTokenFactory");
@@ -332,10 +335,10 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
             uint256[]  memory strikePrices,
             uint256[] memory deltas,
             address spreadToken
-        ) = VaultLifecycleSpread.commitAndClose(closeParams, vaultParams, vaultState);
+        ) = VaultLifecycleSpread.commitAndClose(closeParams, vaultParams, vaultState, OPTIONS_EXPIRY_IN_DAYS);
 
         emit NewSpreadStrikesSelected(strikePrices, deltas, spreadToken);
-        
+
         bool isPut = vaultParams.isPut;
 
         if (isPut) {
@@ -350,7 +353,7 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
                 "Short otoken must have less strike price then long token"
             );
         }
-        
+
         spreadState.nextSpread = spread;
         spreadState.nextSpreadToken = spreadToken;
 
@@ -374,7 +377,7 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
         }
         vaultState.lockedAmount = 0;
         vaultState.lockedAmountUsed = 0;
-        
+
         delete spreadState.currentSpread;
 
         if (oldSpread.length > 0 && oldSpread[0] != address(0)) {
@@ -422,7 +425,7 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
 
             emit OpenSpread(newSpread, lockedBalance, msg.sender, spreadToken);
         }
-        
+
         lockedBalance = lockedBalance - lockedAmountUsed;
 
         while (index > 0 && lockedBalance > 0) {
@@ -435,11 +438,11 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
                     spreadToken,
                     lockedAmountUsed == 0
                 );
-            
+
             totalMinted = totalMinted + optionsMintAmount;
             index = index - 1;
             lockedAmountUsed = lockedAmountUsed + uint104(collateralUsed);
-            
+
             lockedBalance = lockedBalance - collateralUsed;
         }
         vaultState.lockedAmountUsed = vaultState.lockedAmountUsed + lockedAmountUsed;

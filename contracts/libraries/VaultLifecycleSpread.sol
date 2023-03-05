@@ -38,12 +38,14 @@ library VaultLifecycleSpread {
     // Number of weeks per year = 52.142857 weeks * FEE_MULTIPLIER = 52142857
     // Dividing by weeks per year requires doing (num * FEE_MULTIPLIER) / WEEKS_PER_YEAR
     uint256 internal constant WEEKS_PER_YEAR = 52142857;
+    uint256 constant SECONDS_PER_DAY = 24 * 60 * 60;
 
     /**
      * @notice Sets the next spread for the vault, and calculates its premium for the auction
      * @param closeParams is the struct with details on previous spread and strike selection details
      * @param vaultParams is the struct with vault general data
      * @param vaultState is the struct with vault accounting state
+     * @param optionsExpiryInDays is expiry duration in days.
      * @return spread addresses of the new short and long options
      * @return strikePrices is the strike prices of the options in spread
      * @return deltas is the deltas of the new options in the spread
@@ -51,7 +53,8 @@ library VaultLifecycleSpread {
     function commitAndClose(
         CloseParams calldata closeParams,
         Vault.VaultParams storage vaultParams,
-        Vault.VaultState storage vaultState
+        Vault.VaultState storage vaultState,
+        uint256 optionsExpiryInDays
     )
         external
         returns (
@@ -61,7 +64,10 @@ library VaultLifecycleSpread {
             address spreadToken
         )
     {
-        uint256 expiry = getNextExpiry(closeParams.currentSpread.length > 0 ? closeParams.currentSpread[0]:address(0));
+        uint256 expiry = getNextExpiry(
+            closeParams.currentSpread.length > 0 ? closeParams.currentSpread[0]:address(0),
+            optionsExpiryInDays
+        );
 
         IStrikeSelectionSpread selection =
             IStrikeSelectionSpread(closeParams.strikeSelection);
@@ -780,36 +786,45 @@ library VaultLifecycleSpread {
     /**
      * @notice Gets the next option expiry timestamp
      * @param currentSpread is the otoken address that the vault is currently writing
+     * @param optionsExpiryInDays is expiry in no of days.
      */
-    function getNextExpiry(address currentSpread)
+    function getNextExpiry(address currentSpread, uint256 optionsExpiryInDays)
         internal
         view
         returns (uint256)
     {
-        /**if (currentSpread == address(0)) {
-            return getNextDay(block.timestamp);
+
+        uint256 currentExpiry;
+
+        // weekly vaults.
+        if (optionsExpiryInDays == 0) {
+            if (currentSpread == address(0)) {
+                return getNextFriday(block.timestamp);
+            }
+            currentExpiry = IOtoken(currentSpread).expiryTimestamp();
+
+            // After options expiry if no options are written for >1 week
+            // We need to give the ability continue writing options
+            if (block.timestamp > currentExpiry + 7 days) {
+                return getNextFriday(block.timestamp);
+            }
+            uint256 nextFriday = getNextFriday(currentExpiry);
+            return nextFriday;
         }
-        uint256 currentExpiry = IOtoken(currentSpread).expiryTimestamp();
 
-        // After options expiry if no options are written for >1 week
-        // We need to give the ability continue writing options
-        if (block.timestamp > currentExpiry + 1 days) {
-            return getNextDay(block.timestamp);
-        }
-        return getNextDay(currentExpiry);*/
-
-
+        // Daily Vaults.
         if (currentSpread == address(0)) {
-            return getNextFriday(block.timestamp);
+            return getNextDay(block.timestamp, optionsExpiryInDays);
         }
-        uint256 currentExpiry = IOtoken(currentSpread).expiryTimestamp();
+        currentExpiry = IOtoken(currentSpread).expiryTimestamp();
+        uint256 nextExpiryDay = addDays(currentExpiry, optionsExpiryInDays);
 
-        // After options expiry if no options are written for >1 week
+        // After options expiry if no options are written for >1 day
         // We need to give the ability continue writing options
-        if (block.timestamp > currentExpiry + 1 days) {
-            return getNextFriday(block.timestamp);
+        if (block.timestamp > nextExpiryDay) {
+            return getNextDay(block.timestamp, optionsExpiryInDays);
         }
-        return getNextFriday(currentExpiry);
+        return getNextDay(currentExpiry, optionsExpiryInDays);
 
     }
 
@@ -835,10 +850,10 @@ library VaultLifecycleSpread {
         return friday8am;
     }
 
-    //TODO: REMOVE THIS
-    /**function getNextDay(uint256 timestamp) internal pure returns (uint256) {
-        // dayOfWeek = 0 (sunday) - 6 (saturday)
-        uint256 nextDay = timestamp + 1 days;
+
+    function getNextDay(uint256 timestamp, uint256 optionsExpiryInDays) internal pure returns (uint256) {
+
+        uint256 nextDay = addDays(timestamp, optionsExpiryInDays);
         uint256 nextDay8am = nextDay - (nextDay % (24 hours)) + (8 hours);
 
         // If the passed timestamp is day=Friday hour>8am, we simply increment it by a week to next Friday
@@ -846,5 +861,10 @@ library VaultLifecycleSpread {
             nextDay8am += 1 days;
         }
         return nextDay8am;
-    }*/
+    }
+
+    function addDays(uint timestamp, uint _days) internal pure returns (uint newTimestamp) {
+        newTimestamp = timestamp + _days * SECONDS_PER_DAY;
+        require(newTimestamp >= timestamp);
+    }
 }

@@ -76,7 +76,7 @@ contract HimalayanVault is
      *  IMMUTABLES & CONSTANTS
      ***********************************************/
 
-    /// @notice Wrapped NATIVE currency 
+    /// @notice Wrapped NATIVE currency
     address public immutable WNATIVE;
 
     /// @notice USDC
@@ -98,6 +98,9 @@ contract HimalayanVault is
 
     //IMPL OF SYMBOLIC SPREAD TOKEN
     address public immutable SPREAD_TOKEN;
+
+    // duration for options expiry in days.
+    uint256 public immutable OPTIONS_EXPIRY_IN_DAYS;
 
     /************************************************
      *  EVENTS
@@ -140,6 +143,7 @@ contract HimalayanVault is
      * @param _marginPool is the contract address for providing collateral to opyn
      * @param _gnosisEasyAuction is the contract address that facilitates gnosis auctions
      * @param _token is the token contract for EIP 1667
+     * @param _optionsExpiryInDays is the duration for options expiry daily.
      */
     constructor(
         address _wnative,
@@ -147,7 +151,8 @@ contract HimalayanVault is
         address _gammaController,
         address _marginPool,
         address _gnosisEasyAuction,
-        address _token
+        address _token,
+        uint256 _optionsExpiryInDays
     ) {
         require(_wnative != address(0), "!_wnative");
         require(_usdc != address(0), "!_usdc");
@@ -155,6 +160,7 @@ contract HimalayanVault is
         require(_gammaController != address(0), "!_gammaController");
         require(_marginPool != address(0), "!_marginPool");
         require(_token != address(0), "!token");
+        require(_optionsExpiryInDays >= 0, "!_optionsExpiryInDays");
 
         WNATIVE = _wnative;
         USDC = _usdc;
@@ -162,6 +168,7 @@ contract HimalayanVault is
         MARGIN_POOL = _marginPool;
         GNOSIS_EASY_AUCTION = _gnosisEasyAuction;
         SPREAD_TOKEN = _token;
+        OPTIONS_EXPIRY_IN_DAYS = _optionsExpiryInDays;
     }
 
     /**
