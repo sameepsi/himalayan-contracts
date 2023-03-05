@@ -70,7 +70,7 @@ library Vault {
         // Amount that was locked for selling options in the previous round
         // used for calculating performance fee deduction
         uint104 lastLockedAmount;
-        // Locked amount which is unsed so far
+        // Locked amount which is used so far
         uint104 lockedAmountUsed;
         // 32 byte slot 2
         // Stores the total tally of how much of `asset` there is
@@ -103,5 +103,44 @@ library Vault {
         uint96 buyAmount;
         // User Id of delta vault in latest gnosis auction
         uint64 userId;
+    }
+
+    struct SpreadTokenInfo {
+        // strikes prices for spread
+        uint256[] strikePrices;
+
+        // address of strike asset
+        address strike;
+
+        // address of asset
+        address asset;
+
+        // address of underlying asset
+        address underlying;
+
+        // expiry timestamp for option
+        uint256 expiry;
+
+        // put or call option.
+        bool isPut;
+
+        // long price formatted
+        string displayStrikePrice1;
+
+        // long price formatted
+        string displayStrikePrice2;
+
+        // spread token name
+        string tokenName;
+
+        // spread token symbol
+        string tokenSymbol;
+
+        // strike asset symbol
+        string strikeSymbol;
+
+        // underlying asset symbol
+        string underlyingSymbol;
+
     }
 }

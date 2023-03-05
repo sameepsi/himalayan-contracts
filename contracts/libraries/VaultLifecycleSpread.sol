@@ -76,7 +76,7 @@ library VaultLifecycleSpread {
         for (uint256 i = 0; i < strikePrices.length; i++) {
             require(strikePrices[i] != 0, "!strikePrice");
         }
-        
+
 
         // retrieve address if option already exists, or deploy it
         spread = getOrDeployOtokens(
@@ -89,14 +89,17 @@ library VaultLifecycleSpread {
             isPut
         );
 
+        Vault.SpreadTokenInfo memory spreadTokenInfo;
+        spreadTokenInfo.strikePrices = strikePrices;
+        spreadTokenInfo.strike = closeParams.USDC;
+        spreadTokenInfo.asset = asset;
+        spreadTokenInfo.underlying = underlying;
+        spreadTokenInfo.expiry = expiry;
+        spreadTokenInfo.isPut = isPut;
+
         spreadToken = deploySpreadToken(
             closeParams.SPREAD_TOKEN_IMPL,
-            "Call Spread Token",
-            "CST",
-            asset,
-            underlying,
-            expiry,
-            isPut
+            spreadTokenInfo
         );
 
         return (spread, strikePrices, deltas, spreadToken);
@@ -104,26 +107,14 @@ library VaultLifecycleSpread {
 
     function deploySpreadToken(
         address impl,
-        string memory name,
-        string memory symbol,
-        address asset,
-        address underlying,
-        uint256 expiry,
-        bool isPut
+        Vault.SpreadTokenInfo memory spreadTokenInfo
     )
         private
         returns(address)
     {
 
         address instance = impl.clone();
-        ISpreadToken(instance).init(
-            name,
-            symbol,
-            asset,
-            underlying,
-            expiry,
-            isPut
-        );
+        ISpreadToken(instance).init(spreadTokenInfo);
 
         return instance;
     }
@@ -287,7 +278,7 @@ library VaultLifecycleSpread {
         address spreadToken,
         bool newVault
     ) public returns (uint256 mintAmount, uint256 collateralUsed) {
-        
+
         // An otoken's collateralAsset is the vault's `asset`
         // So in the context of performing Opyn short operations we call them collateralAsset
         // Assuming both oTokens in the spread has same collateral
@@ -410,10 +401,10 @@ library VaultLifecycleSpread {
 
                 controller.operate(actions);
             }
-            
-        
+
+
         }
-        
+
         _mintSpread(
             gammaController,
             marginPool,
@@ -449,7 +440,7 @@ library VaultLifecycleSpread {
 
         IController.ActionArgs[] memory actions =
             new IController.ActionArgs[](2);
-        
+
         actions[0] = IController.ActionArgs(
             IController.ActionType.DepositLongOption,
             spreadToken, // vault owner
@@ -489,7 +480,7 @@ library VaultLifecycleSpread {
         IController controller = IController(gammaController);
         uint256 vaultId =
             (controller.getAccountVaultCounter(address(this)));
-            
+
         IMarginCalculator calculator = IMarginCalculator(controller.calculator());
 
         IERC20 longOption = IERC20(spread[1]);
@@ -497,7 +488,7 @@ library VaultLifecycleSpread {
 
         IController.ActionArgs[] memory actions =
             new IController.ActionArgs[](1);
-        
+
         actions[0] = IController.ActionArgs(
             IController.ActionType.DepositLongOption,
             address(this), // vault owner

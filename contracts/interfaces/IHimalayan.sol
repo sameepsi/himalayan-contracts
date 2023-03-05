@@ -55,12 +55,7 @@ interface IOptionsPremiumPricer {
 interface ISpreadToken {
 
     function init(
-        string calldata name,
-        string calldata symbol,
-        address _asset,
-        address _underlying,
-        uint256 _expiry,
-        bool _isPut
+        Vault.SpreadTokenInfo memory spreadTokenInfo
     )
         external;
 
