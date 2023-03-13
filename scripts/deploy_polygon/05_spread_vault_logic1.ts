@@ -17,20 +17,15 @@ const main = async ({
 
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
-  console.log(`02 - Deploying Spread Vault logic on ${network.name}`);
+  console.log(`05 - Deploying Spread Vault logic1 on ${network.name}`);
 
   const chainId = network.config.chainId;
-  const lifecycle = await deploy("VaultLifecycleSpread", {
-    contract: "VaultLifecycleSpread",
-    from: deployer,
-  });
-  console.log(`VaultLifecycleSpread @ ${lifecycle.address}`);
-
+  const lifecycle = await deployments.get("VaultLifecycleSpread");
   const spreadTokenLogic = await deployments.get("SpreadTokenLogic");
-  const optionsExpiryDuration = 0; // 0 for weekly
+  const optionsExpiryDuration = 1; // 0 for weekly
 
   try {
-    const vault = await deploy("SpreadVaultLogic", {
+    const vault = await deploy("SpreadVaultLogic1", {
       contract: "SpreadVault",
       from: deployer,
       args: [
@@ -47,7 +42,7 @@ const main = async ({
         VaultLifecycleSpread: lifecycle.address,
       },
     });
-    console.log(`SpreadVaultLogic @ ${vault.address}`);
+    console.log(`SpreadVaultLogic1 @ ${vault.address}`);
 
     if (vault.newlyDeployed) {
       await run("verify:verify", {
@@ -72,6 +67,6 @@ const main = async ({
     console.log(error);
   }
 };
-main.tags = ["SpreadVaultLogic"];
+main.tags = ["SpreadVaultLogic1"];
 
 export default main;
