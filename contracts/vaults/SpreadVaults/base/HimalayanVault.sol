@@ -19,6 +19,7 @@ import {Vault} from "../../../libraries/Vault.sol";
 import {VaultLifecycleSpread} from "../../../libraries/VaultLifecycleSpread.sol";
 import {ShareMath} from "../../../libraries/ShareMath.sol";
 import {IWETH} from "../../../interfaces/IWETH.sol";
+import {AllowList} from "../../../utils/AllowList.sol";
 
 contract HimalayanVault is
     ReentrancyGuardUpgradeable,
@@ -102,6 +103,9 @@ contract HimalayanVault is
     // duration for options expiry in days.
     uint256 public immutable OPTIONS_EXPIRY_IN_DAYS;
 
+    // allow list contract address
+    address public immutable ALLOW_LIST;
+
     /************************************************
      *  EVENTS
      ***********************************************/
@@ -152,7 +156,8 @@ contract HimalayanVault is
         address _marginPool,
         address _gnosisEasyAuction,
         address _token,
-        uint256 _optionsExpiryInDays
+        uint256 _optionsExpiryInDays,
+        address _allowList
     ) {
         require(_wnative != address(0), "!_wnative");
         require(_usdc != address(0), "!_usdc");
@@ -169,6 +174,7 @@ contract HimalayanVault is
         GNOSIS_EASY_AUCTION = _gnosisEasyAuction;
         SPREAD_TOKEN = _token;
         OPTIONS_EXPIRY_IN_DAYS = _optionsExpiryInDays;
+        ALLOW_LIST = _allowList;
     }
 
     /**
@@ -224,6 +230,14 @@ contract HimalayanVault is
     }
 
     /**
+     * @dev checks if allow list in enabled and then if address is allowed or not.
+     */
+    modifier checkAllowList(address addr) {
+        require(AllowList(ALLOW_LIST).isAllowed(addr), "!allowList");
+        _;
+    }
+
+    /**
      * @notice Sets the new keeper
      * @param newKeeper is the address of the new keeper
      */
@@ -259,21 +273,6 @@ contract HimalayanVault is
         emit ManagementFeeSet(managementFee, newManagementFee);
 
         managementFee = tmpManagementFee;
-    }
-
-    /**
-     * @notice Sets the performance fee for the vault
-     * @param newPerformanceFee is the performance fee (6 decimals). ex: 20 * 10 ** 6 = 20%
-     */
-    function setPerformanceFee(uint256 newPerformanceFee) external onlyOwner {
-        require(
-            newPerformanceFee < 100 * Vault.FEE_MULTIPLIER,
-            "Invalid performance fee"
-        );
-
-        emit PerformanceFeeSet(performanceFee, newPerformanceFee);
-
-        performanceFee = newPerformanceFee;
     }
 
     /**
@@ -348,7 +347,7 @@ contract HimalayanVault is
      * @param amount is the amount of `asset` deposited
      * @param creditor is the address to receieve the deposit
      */
-    function _depositFor(uint256 amount, address creditor) private {
+    function _depositFor(uint256 amount, address creditor) private checkAllowList(creditor){
         uint256 currentRound = vaultState.round;
         uint256 totalWithDepositedAmount = totalBalance() + amount;
 

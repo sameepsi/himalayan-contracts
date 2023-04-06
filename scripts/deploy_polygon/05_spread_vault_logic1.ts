@@ -22,6 +22,7 @@ const main = async ({
   const chainId = network.config.chainId;
   const lifecycle = await deployments.get("VaultLifecycleSpread");
   const spreadTokenLogic = await deployments.get("SpreadTokenLogic");
+  const allowList = await deployments.get("AllowList");
   const optionsExpiryDuration = 1; // 0 for weekly
 
   try {
@@ -36,7 +37,8 @@ const main = async ({
         MARGIN_POOL[chainId],
         GNOSIS_EASY_AUCTION[chainId],
         spreadTokenLogic.address,
-        optionsExpiryDuration
+        optionsExpiryDuration,
+        allowList.address
       ],
       libraries: {
         VaultLifecycleSpread: lifecycle.address,
@@ -55,7 +57,8 @@ const main = async ({
           MARGIN_POOL[chainId],
           GNOSIS_EASY_AUCTION[chainId],
           spreadTokenLogic.address,
-          optionsExpiryDuration
+          optionsExpiryDuration,
+          allowList.address
         ],
       });
       await run("verify:verify", {

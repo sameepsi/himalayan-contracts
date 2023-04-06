@@ -132,7 +132,8 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
         address _marginPool,
         address _gnosisEasyAuction,
         address _spreadTokenLogic,
-        uint256 _optionsExpiryInDays
+        uint256 _optionsExpiryInDays,
+        address _allowList
     )
         HimalayanVault(
             _wnative,
@@ -141,7 +142,8 @@ contract SpreadVault is HimalayanVault, HimalayanCallSpreadStorage {
             _marginPool,
             _gnosisEasyAuction,
             _spreadTokenLogic,
-            _optionsExpiryInDays
+            _optionsExpiryInDays,
+            _allowList
         )
     {
         require(_oTokenFactory != address(0), "!_oTokenFactory");
